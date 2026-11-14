@@ -1,0 +1,146 @@
+// Lua API: runs stage.lua + script.lua in an embedded Lua VM (Fengari) and turns every
+// API call into a command on the timeline. Nothing is drawn here (record, then play).
+//
+// `fengari` is passed in so the same module works in Node (npm package) and in the
+// browser (window.fengari from fengari-web).
+
+import { Scene, DEFAULT_NODE_COLOR, DEFAULT_EDGE_COLOR } from './scene.js';
+import { Timeline, toMs } from './timeline.js';
+import { parseColor } from './colors.js';
+
+export const DEFAULT_DUR_MS = 500;
+const MAX_INSTRUCTIONS = 50_000_000; // guards against infinite loops freezing the page
+const HOOK_EVERY = 100_000;
+const MAX_COMMANDS = 50_000;
+
+export const API_NAMES = ['node', 'edge', 'color', 'move', 'wait', 'neighbors', 'edge_of'];
+
+export class ScriptError extends Error {}
+
+/**
+ * Runs the stage (and optionally the script) and returns
+ *   { scene, timeline, log, stageCommands }
+ * scene        final logical state (what neighbors/edge_of see)
+ * timeline     every command, timestamped
+ * log          lines printed with print()
+ * stageCommands  how many commands came from stage.lua
+ * Throws ScriptError with "file.lua:line: message" on any Lua error.
+ */
+export function runProgram(fengari, { stage = '', script = '' }) {
+  const { lua, lauxlib, lualib, to_luastring, to_jsstring } = fengari;
+  const scene = new Scene();
+  const timeline = new Timeline();
+  const log = [];
+
+  const L = lauxlib.luaL_newstate();
+  // Only safe, pure libraries: no io/os/package, so scripts can't touch files.
+  for (const [name, open] of [['_G', lualib.luaopen_base], ['table', lualib.luaopen_table],
+    ['string', lualib.luaopen_string], ['math', lualib.luaopen_math]]) {
+    lauxlib.luaL_requiref(L, to_luastring(name), open, 1);
+    lua.lua_pop(L, 1);
+  }
+  for (const g of ['dofile', 'loadfile']) { lua.lua_pushnil(L); lua.lua_setglobal(L, to_luastring(g)); }
+
+  const fail = (msg) => lauxlib.luaL_error(L, to_luastring(msg));
+  const optSeconds = (i) => {
+    if (lua.lua_isnoneornil(L, i)) return DEFAULT_DUR_MS;
+    const s = lauxlib.luaL_checknumber(L, i);
+    if (s < 0) fail('duration must be >= 0');
+    return toMs(s);
+  };
+  const checkObj = (i, kind) => {
+    const id = lauxlib.luaL_checkinteger(L, i);
+    const o = scene.get(id);
+    if (!o || (kind && o.kind !== kind)) fail(`argument #${i}: no ${kind ?? 'object'} with id ${id}`);
+    return id;
+  };
+  const emit = (cmd) => {
+    if (timeline.commands.length >= MAX_COMMANDS) fail(`too many commands (limit ${MAX_COMMANDS})`);
+    return timeline.add(cmd);
+  };
+
+  const api = {
+    node(L) {
+      const label = to_jsstring(lauxlib.luaL_checkstring(L, 1));
+      const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
+      const id = scene.addNode(label, x, y);
+      emit({ op: 'create', id, kind: 'node', props: { label, pos: { x, y }, color: DEFAULT_NODE_COLOR } });
+      lua.lua_pushinteger(L, id);
+      return 1;
+    },
+    edge(L) {
+      const a = checkObj(1, 'node'), b = checkObj(2, 'node');
+      let id;
+      try { id = scene.addEdge(a, b); } catch (e) { fail(e.message); }
+      emit({ op: 'create', id, kind: 'edge', props: { a, b, color: DEFAULT_EDGE_COLOR } });
+      lua.lua_pushinteger(L, id);
+      return 1;
+    },
+    color(L) {
+      const id = checkObj(1);
+      const c = to_jsstring(lauxlib.luaL_checkstring(L, 2));
+      if (!parseColor(c)) fail(`unknown colour '${c}' (use a name like "red" or a hex code like "#ff0000")`);
+      const dur = optSeconds(3);
+      scene.get(id).color = c;
+      emit({ op: 'set', id, prop: 'color', value: c, dur });
+      return 0;
+    },
+    move(L) {
+      const id = checkObj(1, 'node');
+      const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
+      const dur = optSeconds(4);
+      Object.assign(scene.get(id), { x, y });
+      emit({ op: 'set', id, prop: 'pos', value: { x, y }, dur });
+      return 0;
+    },
+    wait(L) {
+      const s = lauxlib.luaL_checknumber(L, 1);
+      if (s < 0) fail('wait time must be >= 0');
+      timeline.wait(toMs(s));
+      return 0;
+    },
+    neighbors(L) {
+      const id = checkObj(1, 'node');
+      const list = scene.neighbors(id);
+      lua.lua_createtable(L, list.length, 0);
+      list.forEach((n, i) => { lua.lua_pushinteger(L, n); lua.lua_rawseti(L, -2, i + 1); });
+      return 1;
+    },
+    edge_of(L) {
+      const a = checkObj(1, 'node'), b = checkObj(2, 'node');
+      const e = scene.edgeOf(a, b);
+      if (e === null) lua.lua_pushnil(L); else lua.lua_pushinteger(L, e);
+      return 1;
+    },
+    print(L) {
+      const n = lua.lua_gettop(L), parts = [];
+      for (let i = 1; i <= n; i++) parts.push(to_jsstring(lauxlib.luaL_tolstring(L, i)));
+      log.push(parts.join('\t'));
+      return 0;
+    },
+  };
+  for (const [name, fn] of Object.entries(api)) {
+    lua.lua_pushjsfunction(L, fn);
+    lua.lua_setglobal(L, to_luastring(name));
+  }
+
+  let steps = 0;
+  lua.lua_sethook(L, (L) => {
+    steps += HOOK_EVERY;
+    if (steps > MAX_INSTRUCTIONS) fail('script ran too long (infinite loop?)');
+  }, lua.LUA_MASKCOUNT, HOOK_EVERY);
+
+  const run = (src, chunk) => {
+    let st = lauxlib.luaL_loadbuffer(L, to_luastring(src), null, to_luastring('=' + chunk));
+    if (st === lua.LUA_OK) st = lua.lua_pcall(L, 0, 0, 0);
+    if (st !== lua.LUA_OK) {
+      const msg = lua.lua_tostring(L, -1);
+      throw new ScriptError(msg ? to_jsstring(msg) : `${chunk}: error`);
+    }
+  };
+
+  run(stage, 'stage.lua');
+  const stageCommands = timeline.commands.length;
+  run(script, 'script.lua');
+  return { scene, timeline, log, stageCommands };
+}

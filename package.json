@@ -1,0 +1,16 @@
+{
+  "name": "gepv1",
+  "version": "0.1.0",
+  "description": "GEPV1 - General Environment Programming Engine V1 (minimal web demo)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node node/server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "demo": "node node/cli.js examples/stage.lua examples/dfs.lua --trace --video out/dfs.mp4"
+  },
+  "dependencies": {
+    "fengari": "^0.1.5",
+    "fengari-web": "^0.1.4"
+  }
+}
