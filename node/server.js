@@ -49,8 +49,8 @@ async function readBody(req) {
 async function handleExport(req, res) {
   let dir;
   try {
-    const { stage = '', script = '' } = JSON.parse(await readBody(req));
-    const { timeline } = runProgram(fengari, { stage: String(stage), script: String(script) });
+    const { stage = '', steps = '', script = '' } = JSON.parse(await readBody(req));
+    const { timeline } = runProgram(fengari, { stage: String(stage), steps: String(steps), script: String(script) });
     if (timeline.durationMs > MAX_VIDEO_MS) throw Object.assign(new Error(`animation longer than ${MAX_VIDEO_MS / 1000} s`), { status: 400 });
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'gepv1-'));
     await writeFrames(timeline, dir, FPS);

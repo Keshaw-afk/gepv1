@@ -16,11 +16,9 @@ function valueAt(tw, prop, t) {
   return lerpValue(prop, tw.from, tw.to, f);
 }
 
-/**
- * Returns { nodes: [{id, label, x, y, color}], edges: [{id, a, b, color}] } at time tMs.
- * Commands must be sorted by t (the timeline appends them in clock order).
- */
-export function sceneAt(timeline, tMs) {
+// Replays commands with t <= tMs. Each property becomes a tween that starts from wherever the
+// property is at that moment. onSet(cmd, tween) sees every resolved tween (used by animated SVG).
+function replay(timeline, tMs, onSet) {
   const objs = new Map();
   for (const c of timeline.commands) {
     if (c.t > tMs) break;
@@ -32,17 +30,32 @@ export function sceneAt(timeline, tMs) {
       const o = objs.get(c.id);
       const from = valueAt(o.props[c.prop], c.prop, c.t); // start from wherever it is right now
       o.props[c.prop] = { from, to: c.value, t0: c.t, dur: c.dur };
+      onSet?.(c, o.props[c.prop]);
     }
   }
+  return objs;
+}
 
+/**
+ * Returns { nodes: [{id, label, x, y, color}], edges: [{id, a, b, color}] } at time tMs.
+ * Commands must be sorted by t (the timeline appends them in clock order).
+ */
+export function sceneAt(timeline, tMs) {
   const state = { nodes: [], edges: [] };
-  for (const o of objs.values()) {
+  for (const o of replay(timeline, tMs).values()) {
     const v = {};
     for (const [k, tw] of Object.entries(o.props)) v[k] = valueAt(tw, k, tMs);
     if (o.kind === 'node') state.nodes.push({ id: o.id, label: v.label, x: v.pos.x, y: v.pos.y, color: v.color });
     else state.edges.push({ id: o.id, a: v.a, b: v.b, color: v.color });
   }
   return state;
+}
+
+/** Every 'set' as a resolved tween { id, prop, from, to, t0, dur }, in command order. */
+export function tweens(timeline) {
+  const list = [];
+  replay(timeline, Infinity, (c, tw) => list.push({ id: c.id, prop: c.prop, ...tw }));
+  return list;
 }
 
 /** Frame timestamps (ms) covering [0, duration] at the given fps. */

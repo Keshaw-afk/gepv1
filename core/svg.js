@@ -8,7 +8,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&
 const n = (v) => Math.round(v * 100) / 100;
 // Always emit hex so "red" means the engine's palette red, not the browser's CSS red
 // (otherwise the last frame of a tween would jump to a different shade).
-const paint = (c) => { const rgb = parseColor(c); return rgb ? toHex(rgb) : '#000000'; };
+export const paint = (c) => { const rgb = parseColor(c); return rgb ? toHex(rgb) : '#000000'; };
 
 /**
  * opts.selected   id to highlight (editor)

@@ -16,10 +16,17 @@ npm install
 npm start            # http://localhost:8080  (PORT=xxxx npm start to change)
 ```
 
-The page opens with the DFS example loaded:
-1. **Stage:** edit the graph (click to add, drag to move, Shift-drag or right-drag to connect).
-2. **Behaviour:** edit `script.lua`.
-3. **Run:** watch the preview and read the trace, then **Export video (MP4)**.
+The page has three tabs: **Stage → Behaviour → Result**.
+1. **Stage:** draw the starting picture (click to add, drag to move, Shift-drag or right-drag to connect).
+2. **Behaviour:** either
+   - **Steps** (no code): click a node or line, then pick a colour; drag a node to record a move;
+     add pauses. Each step plays after the previous one, or "with previous". The generated
+     `steps.lua` is shown underneath.
+   - **Code** for loops and algorithms (DFS is loaded at start; examples are in the dropdown).
+   Run plays stage → steps → code.
+3. **Result:** preview, scrub, and download an **MP4 video**, an **animated SVG** (one file that plays
+   in any browser), or **this frame** as a still SVG. The SVG code of the current frame and the
+   pipeline trace are in the collapsible sections.
 
 ## CLI
 
@@ -28,7 +35,8 @@ npm run demo
 # = node node/cli.js examples/stage.lua examples/dfs.lua --trace --video out/dfs.mp4
 ```
 
-Options: `--trace`, `--frames DIR`, `--video OUT.mp4`, `--fps N` (default 25).
+Options: `--trace`, `--frames DIR` (one SVG per frame), `--video OUT.mp4`, `--svg OUT.svg`
+(animated SVG), `--fps N` (default 25).
 
 ## Tests
 
