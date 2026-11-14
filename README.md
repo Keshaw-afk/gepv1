@@ -22,7 +22,7 @@ The page has three tabs: **Stage → Behaviour → Result**.
    - **Steps** (no code): click a node or line, then pick a colour; drag a node to record a move;
      add pauses. Each step plays after the previous one, or "with previous". The generated
      `steps.lua` is shown underneath.
-   - **Code** for loops and algorithms (DFS is loaded at start; examples are in the dropdown).
+   - **Code** for loops and algorithms (starts empty; DFS, BFS and others are under **Load example…**).
    Run plays stage → steps → code.
 3. **Result:** preview, scrub, and download an **MP4 video**, an **animated SVG** (one file that plays
    in any browser), or **this frame** as a still SVG. The SVG code of the current frame and the

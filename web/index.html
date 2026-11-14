@@ -72,6 +72,10 @@
             <label>Duration <input id="dur" type="number" min="0" max="10" step="0.1" value="0.5"> s</label>
             <button id="pause" type="button">+ Pause</button>
           </div>
+          <p id="code-note" class="note" hidden>
+            The <b>Code</b> tab also has <span id="code-count"></span> lines. They play after these steps.
+            <button id="clear-code-note" type="button">Clear code</button>
+          </p>
           <ol id="steps" class="steps"></ol>
           <p id="steps-empty" class="hint empty">No steps yet.</p>
           <div class="toolbar">

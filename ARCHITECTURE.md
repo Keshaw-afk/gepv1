@@ -197,7 +197,7 @@ end
 dfs(A)
 ```
 
-**Step 3: run.** Press **Run**, then **Export video** in the page, or from the CLI:
+**Step 3: run.** In the page, pick **Load example… → Depth-first search** in the Code tab and press **Run**, then **MP4 video** or **Animated SVG** in the Result tab. Or from the CLI:
 `node node/cli.js examples/stage.lua examples/dfs.lua --trace --video out/dfs.mp4`
 ```
 [stage]     4 nodes, 3 edges (from stage.lua)

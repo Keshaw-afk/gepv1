@@ -206,7 +206,9 @@ scriptBox.addEventListener('keydown', (e) => {
   scriptBox.setRangeText('  ', scriptBox.selectionStart, scriptBox.selectionEnd, 'end');
 });
 scriptBox.addEventListener('input', updateRunOrder);
-$('clear-code').addEventListener('click', () => { scriptBox.value = ''; updateRunOrder(); });
+const clearCode = () => { scriptBox.value = ''; updateRunOrder(); };
+$('clear-code').addEventListener('click', clearCode);
+$('clear-code-note').addEventListener('click', clearCode);
 $('example').addEventListener('change', async () => {
   const name = $('example').value;
   $('example').value = '';
@@ -221,6 +223,8 @@ function codeLines() {
 function updateRunOrder() {
   const lines = codeLines();
   $('code-badge').textContent = lines ? `${lines} lines` : '';
+  $('code-count').textContent = lines;
+  $('code-note').hidden = !lines; // never let code play after the steps without saying so
   const parts = ['stage', `${steps.length} step${steps.length === 1 ? '' : 's'}`];
   if (lines) parts.push(`code (${lines} lines)`);
   $('run-order').textContent = `Run plays: ${parts.join(' → ')}`;
@@ -339,9 +343,7 @@ for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('cli
 for (const b of document.querySelectorAll('[data-goto]')) b.addEventListener('click', () => showTab(b.dataset.goto));
 $('run').addEventListener('click', () => showTab('result'));
 
-// ---------- Start with the DFS example ----------
-const [stage, script] = await Promise.all(['stage.lua', 'dfs.lua'].map((f) => fetch(`/examples/${f}`).then((r) => r.text())));
-loadStage(stage);
-scriptBox.value = script;
+// ---------- Start with the example graph, no steps and no code ----------
+loadStage(await fetch('/examples/stage.lua').then((r) => r.text()));
 updateRunOrder();
 showTab('stage');
