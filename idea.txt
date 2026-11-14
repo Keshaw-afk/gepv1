@@ -1,0 +1,81 @@
+Project Name: GEPV1 (General Environment Programming Engine V1)
+
+We will provide certain building blocks for crafting more complicated objects.
+
+Forces + Shapes => Any visualization possible.
+
+This combo can handle of cases
+
+For advance and uncommon needs like gaseous simulations, we need external help
+Gas => plugins
+
+To generalize this:
+We provide object building blocks
+Teacher uses these building blocks to draw a graph (say)
+We provide interaction api to interact with the graph nodes, color(i, red)=> color the node i with red color. join(i, j) => join the node i, j
+
+The teacher uses this interaction api to write ANY algorithm (DFS, BFS, Diameter of graph)
+
+And it draws it. 
+
+Object = Object Properties, API
+
+DFS(graph, start_vertex):
+    label start_vertex as visited 
+    GEPV1.api.object1.node.start_vertex.color = red
+    print/process start_vertex
+    
+    for each neighbor in graph.adjacent_vertices(start_vertex):
+        if neighbor is not visited:
+            DFS(graph, neighbor)
+
+
+DFS c++ code
+
+Teacher will pass this c++ code to a LLM (or by himself) to translate this c++ code to our GEPV1 engine code using our api + lua. 
+
+COLOR [...] [...] 
+
+Node -> color, p1, p2., p3… 
+
+Object building blocks: Basic shapes, depends on teacher how to use these shapes, shapes => sun, graph_node , 
+
+
+
+
+Example
+Teacher 
+Sets the stage
+Defines the behaviour of the elements on the stage
+Gets the outputted animation 
+
+Topic name: Computer Networks
+Packets => circles
+Wire => Pipe 
+Router => Square (multiple squares to make a complicated diagram)
+
+R1 —--Wire —--- R2
+
+R1 = (P1, P2, P3..)
+
+For i in Pi
+	move(i, R1, R2)
+
+ 
+Using the gui, define the behaviour we want using GUI, and leave the code part to the system.
+
+Backend logic which enables this GUI will the same which enables the API.
+
+Lua is a scripting language written in C.
+
+Neovim, feature => statusline, search, … Lua 
+
+VS code => Marketplace, 
+
+Neovim : Lua code => call feature. 
+
+Initial GUI state => Purely teacher drag and drop
+— — — — —
+Window behaviour, color, destroy, => code 
+
+
