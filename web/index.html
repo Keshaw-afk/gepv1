@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GEPV1</title>
+  <link rel="stylesheet" href="/web/style.css">
+  <script src="/vendor/fengari-web.js"></script>
+  <script type="module" src="/web/app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>GEPV1</h1>
+    <p class="pipeline">stage.lua + script.lua → commands → timeline → player → SVG frames → MP4</p>
+  </header>
+
+  <main>
+    <section>
+      <h2><span class="step">1</span> Stage <small>drag &amp; drop</small></h2>
+      <div class="toolbar">
+        <button id="load" type="button">Load…</button>
+        <button id="save" type="button">Save stage.lua</button>
+        <button id="clear" type="button">Clear</button>
+        <input id="file" type="file" accept=".lua,text/plain" hidden>
+      </div>
+      <div id="editor" class="canvas editor"></div>
+      <p class="hint">Click empty space: add node · Drag: move · Shift-drag or right-drag from node to node: connect · Double-click: rename · Delete: remove</p>
+      <div class="inspector">
+        <span id="selection">Nothing selected</span>
+        <label>Label <input id="label" type="text" disabled autocomplete="off"></label>
+        <button id="delete" type="button" disabled>Delete</button>
+      </div>
+      <details>
+        <summary>stage.lua (generated)</summary>
+        <pre id="stage-code" class="code"></pre>
+      </details>
+    </section>
+
+    <section>
+      <h2><span class="step">2</span> Behaviour <small>script.lua</small></h2>
+      <textarea id="script" spellcheck="false" aria-label="script.lua"></textarea>
+      <div class="toolbar">
+        <button id="run" type="button" class="primary">Run</button>
+      </div>
+      <p class="hint api">
+        <code>node(label, x, y)</code> <code>edge(a, b)</code> <code>color(id, c, dur?)</code>
+        <code>move(id, x, y, dur?)</code> <code>wait(t)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
+      </p>
+    </section>
+
+    <div id="error" class="error" hidden></div>
+
+    <section id="result" class="wide" hidden>
+      <h2><span class="step">3</span> Result</h2>
+      <div class="result-grid">
+        <div>
+          <div id="preview" class="canvas"></div>
+          <div class="player">
+            <button id="play" type="button">Play</button>
+            <input id="scrub" type="range" min="0" max="0" value="0" aria-label="time">
+            <span id="time"></span>
+          </div>
+          <div class="toolbar">
+            <button id="export" type="button" class="primary">Export video (MP4)</button>
+            <a id="download" download="gepv1.mp4" hidden>Download MP4</a>
+            <span id="export-status" class="hint"></span>
+          </div>
+          <video id="video" controls hidden></video>
+        </div>
+        <div>
+          <h3>Trace</h3>
+          <pre id="trace" class="code"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
