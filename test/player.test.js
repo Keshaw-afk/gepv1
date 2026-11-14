@@ -36,3 +36,11 @@ test('frameTimes covers the whole duration', () => {
   assert.deepEqual(frameTimes(100, 25), [0, 40, 80]);
   assert.equal(frameTimes(4300, 25).length, 108);
 });
+
+test('rendered colours use the engine palette, so a finished tween matches its last blended frame', async () => {
+  const { renderSVG } = await import('../core/svg.js');
+  const { timeline } = run('A = node("A", 0, 0)', 'color(A, "red", 1)');
+  const fill = (t) => /<circle[^>]*fill="([^"]+)"/.exec(renderSVG(sceneAt(timeline, t)))[1];
+  assert.equal(fill(1000), '#e53935');
+  assert.equal(fill(990), '#e53a37'); // 99% of the way from #cccccc: next to it, not a jump to CSS red
+});

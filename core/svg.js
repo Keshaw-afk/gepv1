@@ -2,10 +2,13 @@
 // Used for video frames, the in-page preview, and the GUI editor.
 
 import { CANVAS, NODE_RADIUS } from './scene.js';
-import { contrastText } from './colors.js';
+import { contrastText, parseColor, toHex } from './colors.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 const n = (v) => Math.round(v * 100) / 100;
+// Always emit hex so "red" means the engine's palette red, not the browser's CSS red
+// (otherwise the last frame of a tween would jump to a different shade).
+const paint = (c) => { const rgb = parseColor(c); return rgb ? toHex(rgb) : '#000000'; };
 
 /**
  * opts.selected   id to highlight (editor)
@@ -24,7 +27,7 @@ export function renderSVG(state, opts = {}) {
     if (!a || !b) continue;
     const xy = `x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}"`;
     if (opts.selected === e.id) out.push(`<line ${xy} stroke="#4f8ef7" stroke-width="9" stroke-opacity="0.45"/>`);
-    out.push(`<line ${xy} stroke="${e.color}" stroke-width="3" stroke-linecap="round"/>`);
+    out.push(`<line ${xy} stroke="${paint(e.color)}" stroke-width="3" stroke-linecap="round"/>`);
     if (opts.interactive) out.push(`<line ${xy} stroke="transparent" stroke-width="14" data-id="${e.id}"/>`);
   }
 
@@ -36,7 +39,7 @@ export function renderSVG(state, opts = {}) {
   for (const nd of state.nodes) {
     const id = opts.interactive ? ` data-id="${nd.id}"` : '';
     if (opts.selected === nd.id) out.push(`<circle cx="${n(nd.x)}" cy="${n(nd.y)}" r="${NODE_RADIUS + 6}" fill="none" stroke="#4f8ef7" stroke-width="3"/>`);
-    out.push(`<circle cx="${n(nd.x)}" cy="${n(nd.y)}" r="${NODE_RADIUS}" fill="${nd.color}" stroke="#333333" stroke-width="2"${id}/>`);
+    out.push(`<circle cx="${n(nd.x)}" cy="${n(nd.y)}" r="${NODE_RADIUS}" fill="${paint(nd.color)}" stroke="#333333" stroke-width="2"${id}/>`);
     out.push(`<text x="${n(nd.x)}" y="${n(nd.y + 6)}" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="bold" fill="${contrastText(nd.color)}" pointer-events="none">${esc(nd.label)}</text>`);
   }
 
