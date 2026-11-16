@@ -161,7 +161,9 @@ The result is **baked**: one `set pos` command per moving node that carries its 
 every tick). So the player, every frame, `--frame N`, the MP4 and the animated SVG all show exactly
 the same motion, a simulation is one moment and one trace line per node, and the same program
 always moves the same way. A node slower than 10 px/s at the end counts as settled; `move()`
-clears a node's velocity. In the GUI, **Let it move** writes `simulate(2, "spread")` into
+clears a node's velocity. Inside a rule time stands still, so a rule only returns an acceleration:
+`color`, `move`, `remove`, `wait`, `push`, creating objects and a nested `simulate` give a clear
+error there. In the GUI, **Let it move** writes `simulate(2, "spread")` into
 `steps.lua`, so the "GUI generates plain API calls" rule holds for motion too.
 
 ---

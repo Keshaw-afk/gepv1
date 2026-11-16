@@ -19,7 +19,7 @@ const $ = (id) => document.getElementById(id);
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
   stage: 'Pick a shape, click empty space to add it · Drag: move · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Delete: remove',
-  behaviour: 'The picture after your steps. Select: click, then pick a colour; drag to record a move · A shape tool adds an object · Line or arrow: connect · Push: drag to give a speed, then Let it move · Delete: remove',
+  behaviour: 'The picture after your steps · Click, then pick a colour · Drag: record a move · Shapes add objects · Push, then Let it move',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
@@ -169,11 +169,12 @@ function addStep(step) {
 }
 $('pause').addEventListener('click', () => addStep({ op: 'wait' }));
 // "Let it move": a few ready-made rules; anything else is a rule written in code
+const LET_IT_MOVE_MS = 2000;
 const RULE_NAMES = { drift: 'drift (keep their pushes)', spread: 'spread out', fall: 'fall' };
 $('simulate').addEventListener('change', () => {
   const rule = $('simulate').value;
   $('simulate').value = '';
-  addStep({ op: 'simulate', rule, dur: Math.max(stepDur(), 100) });
+  addStep({ op: 'simulate', rule, dur: LET_IT_MOVE_MS }); // its own default: rules need time to settle
 });
 $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); });
 
@@ -274,7 +275,7 @@ function renderSteps() {
     dur.setAttribute('aria-label', 'duration in seconds');
     dur.addEventListener('change', () => {
       const v = Number(dur.value);
-      s.dur = Math.round(Math.min(10, Math.max(0, Number.isFinite(v) ? v : 0)) * 1000);
+      s.dur = Math.round(Math.min(10, Math.max(s.op === 'simulate' ? 0.1 : 0, Number.isFinite(v) ? v : 0)) * 1000);
       stepsChanged();
     });
     const durLabel = el('label');

@@ -52,6 +52,7 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   for (const g of ['dofile', 'loadfile']) { lua.lua_pushnil(L); lua.lua_setglobal(L, to_luastring(g)); }
 
   const fail = (msg) => lauxlib.luaL_error(L, to_luastring(msg));
+  let simulating = null; // during simulate(): Map(id -> body), so pos() inside a rule is live
   const optSeconds = (i) => {
     if (lua.lua_isnoneornil(L, i)) return DEFAULT_DUR_MS;
     const s = lauxlib.luaL_checknumber(L, i);
@@ -71,7 +72,12 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     lua.lua_getinfo(L, to_luastring('Sl'), ar);
     return ar.currentline > 0 ? { file: to_jsstring(ar.short_src), line: ar.currentline } : null;
   };
+  // Inside a rule, time stands still: a rule only returns an acceleration.
+  const notInRule = (what) => {
+    if (simulating) fail(`${what} can't be used inside a rule (a rule only returns an acceleration; it can use pos, neighbors, edge_of and print)`);
+  };
   const emit = (cmd) => {
+    notInRule(cmd.op === 'create' ? 'creating objects' : cmd.op === 'remove' ? 'remove' : cmd.prop === 'color' ? 'color' : 'move');
     if (timeline.commands.length >= MAX_COMMANDS) fail(`too many commands (limit ${MAX_COMMANDS})`);
     return timeline.add({ ...cmd, name: scene.nameOf(cmd.id), src: caller() });
   };
@@ -79,7 +85,6 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   // Where each node is over time (its latest move), so pos() and layouts know where things are
   // mid-move: { from, to, t0, dur, ease } or, after simulate(), { …, path }.
   const place = new Map();
-  let simulating = null; // during simulate(): Map(id -> body), so pos() inside a rule is live
   const positionAt = (id, t) => {
     const b = simulating?.get(id);
     if (b) return { x: b.x, y: b.y };
@@ -156,11 +161,13 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       return 0;
     },
     push(L) {
+      notInRule('push');
       const id = checkObj(1, 'node');
       velocity.set(id, { vx: lauxlib.luaL_checknumber(L, 2), vy: lauxlib.luaL_checknumber(L, 3) });
       return 0;
     },
     simulate(L) {
+      notInRule('simulate');
       const seconds = lauxlib.luaL_checknumber(L, 1);
       if (!(seconds > 0 && seconds <= MAX_SECONDS)) fail(`simulate: seconds must be more than 0 and at most ${MAX_SECONDS}`);
       const durMs = toMs(seconds);
@@ -248,6 +255,7 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       return 0;
     },
     wait(L) {
+      notInRule('wait');
       const s = lauxlib.luaL_checknumber(L, 1);
       if (s < 0) fail('wait time must be >= 0');
       timeline.wait(toMs(s));

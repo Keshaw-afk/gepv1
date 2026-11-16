@@ -51,6 +51,7 @@ code and from the Steps tab, not only on the Stage.
 - [x] New objects pop in; a new step slides into the list; faint move trails in Behaviour
       (never exported). Respects reduced motion.
 - [ ] Motion trails in the Result preview (toggle) — maybe; check it doesn't add clutter.
+- [ ] Screenshot every tab and check for clutter (the Behaviour panel is getting busy).
 
 ### 7. Examples, docs, tests
 - [x] Examples: Tree rotation (rewire + tree_layout), Router network (shapes, arrows, pos, remove),

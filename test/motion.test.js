@@ -67,3 +67,10 @@ test('animated SVG: a simulated move is one animation through the baked position
   assert.equal(m[1].split(';').length, 51);
   assert.match(svg, /<animate attributeName="x1" values="100;102;104/);
 });
+
+test('a rule only returns an acceleration: changing things inside it is a clear error', () => {
+  for (const call of ['remove(id)', 'color(id, "red")', 'wait(1)', 'push(id, 1, 1)', 'simulate(1)', 'node("X", 1, 1)', 'move(id, 1, 1)']) {
+    assert.throws(() => run('A = node("A", 100, 100)', `push(A, 500, 0); simulate(1, function(id, x, y, vx, vy) if x > 300 then ${call} end return 0, 0 end)`),
+      /script\.lua:\d+: .*can't be used inside a rule/, call);
+  }
+});
