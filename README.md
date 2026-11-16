@@ -43,3 +43,12 @@ Options: `--trace`, `--frames DIR` (one SVG per frame), `--video OUT.mp4`, `--sv
 ```sh
 npm test
 ```
+
+## Walkthrough
+
+[presentation/GEPV1_walkthrough.pdf](presentation/GEPV1_walkthrough.pdf): one DFS example built in the GUI,
+from stage to MP4 (also as `.pptx`).
+
+## Licence
+
+[Apache-2.0](LICENSE)
