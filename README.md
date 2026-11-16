@@ -1,7 +1,8 @@
 # GEPV1
 
 Draw a stage with drag and drop, drive it with a Lua script, get an animation and an MP4.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works and [HANDOFF.md](HANDOFF.md) for the current
+state, design decisions and how to check changes.
 
 ## Requirements
 
@@ -58,11 +59,16 @@ Options: `--trace`, `--frame N OUT.svg` (one frame), `--frames DIR` (every frame
 `--svg OUT.svg` (animated SVG), `--fps N` (default 25), `--scale 1|2|3`, `--background C|transparent`,
 `--font sans-serif|serif|monospace`.
 
-## Tests
+## Tests and checks
 
 ```sh
-npm test
+npm test                  # unit and integration tests
+npm run check:pixels      # pictures vs v1.0.0, rendered by librsvg
+npm run check:animated    # writes out/animated_check.html: animated SVG vs the player, in Chrome
+npm run check:layout      # how tidy examples/untangle.lua ends up
 ```
+
+See [HANDOFF.md](HANDOFF.md) §4 for what each one should report.
 
 ## Walkthrough
 

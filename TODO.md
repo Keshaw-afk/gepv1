@@ -5,6 +5,8 @@ Usability work is judged by how well it serves those three.
 
 ## Now: shapes and motion (big change)
 
+Built and committed locally (not released). State, decisions and checks: [HANDOFF.md](HANDOFF.md).
+
 Three kinds of motion on one engine, all ending up as ordinary frames:
 **scripted** (`move`, now with easing), **automatic layout** (tidy tree, force-directed settle) and
 **forces** (one general mechanism, designed with the user first). Objects can also appear, connect and disappear *during* the behaviour, from

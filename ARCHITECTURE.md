@@ -176,6 +176,7 @@ node/      CLI, local web server, video export
 web/       editor page
 examples/  stage.lua, dfs.lua, bfs.lua, packets.lua, sort.lua, rotation.lua, network.lua,
            untangle.lua, rules.lua
+tools/     verification: pixel_compare, animated_check, layout_check, spread_tune (see HANDOFF.md)
 test/      node:test suites
 ```
 

@@ -8,7 +8,11 @@
   "scripts": {
     "start": "node node/server.js",
     "test": "node --test \"test/*.test.js\"",
-    "demo": "node node/cli.js examples/stage.lua examples/dfs.lua --trace --video out/dfs.mp4"
+    "demo": "node node/cli.js examples/stage.lua examples/dfs.lua --trace --video out/dfs.mp4",
+    "check:pixels": "node tools/pixel_compare.mjs v1.0.0",
+    "check:animated": "node tools/animated_check.mjs",
+    "check:layout": "node tools/layout_check.mjs examples/untangle.lua",
+    "tune:spread": "node tools/spread_tune.mjs"
   },
   "dependencies": {
     "fengari": "^0.1.5",
