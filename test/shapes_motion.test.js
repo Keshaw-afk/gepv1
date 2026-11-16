@@ -113,3 +113,16 @@ test('positionsOf agrees with sceneAt, including eased moves that start mid-move
     assert.ok(Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9, `t=${t}`);
   }
 });
+
+test('animated SVG: an arrow follows its ends, also when an end jumps (a move with duration 0)', () => {
+  const r = run('A = node("A", 0, 0) B = node("B", 100, 0) arrow(A, B)', 'wait(1); move(A, 200, 0, 0); wait(1); move(B, 100, 100, 1); wait(0.5); move(A, 0, 0, 0); wait(1)');
+  const svg = renderAnimatedSVG(r.timeline);
+  assert.match(svg, /<set attributeName="points" to="200,0 150,0 100,0" begin="1s"/);
+  const anim = svg.match(/<animate attributeName="points" values="([^"]+)" keyTimes="([^"]+)" begin="2s" dur="1s"/);
+  assert.ok(anim, 'sampled while B moves');
+  const values = anim[1].split(';'), keys = anim[2].split(';').map(Number);
+  const k = keys.indexOf(0.5);
+  assert.equal(keys[k + 1], 0.5, 'a jump: two values at the same time');
+  assert.ok(values[k].startsWith('200,') && values[k + 1].startsWith('0,0'));
+  assert.equal(values.at(-1), '0,0 50,50 100,100');
+});

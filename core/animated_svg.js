@@ -7,7 +7,8 @@
 //   colour tween  -> <animate attributeName="fill|stroke"> (+ the label flips black/white)
 //   move tween    -> <animateTransform type="translate"> on the object's group (eased moves use the
 //                    same curve as SMIL keySplines) and <animate> on the ends of every line touching it
-//   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves
+//   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves,
+//                    and set at once when an end jumps
 //   create at t>0 -> hidden until t; remove -> hidden from t (<set attributeName="visibility">)
 // When two animations overlap, the one that starts later wins, which matches the player.
 // Ids, classes and <style> are the same as a still frame's (export flavour in svg.js).
@@ -96,15 +97,26 @@ export function renderAnimatedSVG(timeline, output = {}) {
       }
     }
   }
-  // Arrows: the middle point depends on both ends, so sample the points while either end moves.
+  // Arrows: the middle point depends on both ends, so sample the points while either end moves
+  // (every 10 ms, plus a jump at each instant move inside that time); an instant move outside it
+  // is a <set>.
   for (const e of edges.filter((x) => x.props.directed)) {
     const { a, b } = e.props;
-    for (const [t0, t1] of movingRanges(moves, [a, b])) {
-      const times = [];
-      for (let t = t0; t < t1; t += SAMPLE_MS) times.push(t);
-      times.push(t1);
-      const values = times.map((t) => arrowPoints(posAt(a, t), posAt(b, t))).join(';');
-      const keyTimes = times.map((t) => n((t - t0) / (t1 - t0))).join(';');
+    const at = (t) => arrowPoints(posAt(a, t), posAt(b, t));
+    const ranges = movingRanges(moves, [a, b]);
+    const jumps = moves.filter((m) => (m.id === a || m.id === b) && m.dur === 0).map((m) => m.t0);
+    for (const t of jumps) if (!ranges.some(([t0, t1]) => t > t0 && t < t1)) add('edge', e.id, set('points', at(t), t));
+    for (const [t0, t1] of ranges) {
+      const samples = []; // [time, points]
+      const inside = jumps.filter((t) => t > t0 && t < t1);
+      const times = new Set([t1, ...inside]);
+      for (let t = t0; t < t1; t += SAMPLE_MS) times.add(t);
+      for (const t of [...times].sort((x, y) => x - y)) {
+        if (inside.includes(t)) samples.push([t, at(t - 0.001)]); // just before the jump
+        samples.push([t, at(t)]);
+      }
+      const values = samples.map(([, v]) => v).join(';');
+      const keyTimes = samples.map(([t]) => Number(((t - t0) / (t1 - t0)).toFixed(6))).join(';');
       add('edge', e.id, `<animate attributeName="points" values="${values}" keyTimes="${keyTimes}" begin="${s(t0)}" dur="${s(t1 - t0)}" fill="freeze"/>`);
     }
   }
