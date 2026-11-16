@@ -11,23 +11,23 @@ Three kinds of motion on one engine, all ending up as ordinary frames:
 code and from the Steps tab, not only on the Stage.
 
 ### 1. Shapes
-- [ ] `rect(label, x, y)`, `triangle(label, x, y)`, `text("Hello", x, y)` next to `node` (circle);
-      `arrow(a, b)` next to `edge(a, b)`. Every shape can be coloured, moved, connected, pushed.
-- [ ] SVG: each object is `<g id class="node rect" transform="translate(x y)">`, so a move animates
-      one transform for any shape; arrows are a `<polyline>` with a mid-arrow marker (`context-stroke`,
-      checked in librsvg). Re-check: existing examples give identical pixels.
-- [ ] Stage editor: an icon toolbar on the canvas (circle, square, triangle, text; line or arrow);
+- [x] `rect`, `triangle`, `text` next to `node` (circle); `arrow(a, b)` next to `edge(a, b)`.
+- [x] SVG: each object is `<g id class="node rect" transform="translate(x y)">`; arrows are a
+      `<polyline>` with a mid-arrow marker (`context-stroke`). Pixels vs v1.0.0: 4 of 89 sampled
+      frames differ by at most 2 in a channel (anti-aliasing). Tell the user when versioning: the
+      export format changed (`cx`/`cy` → `translate()`).
+- [x] Tool row above the canvas (select, circle, rectangle, triangle, text, line, arrow; keys V C R T X L A);
       stage.lua saves the new calls.
 
 ### 2. Appear, rewire, disappear
-- [ ] `remove(id)` (a node takes its lines with it); objects created mid-script already appear later.
-- [ ] Player, animated SVG, moments ("p1 disappears") and the trace handle removal.
+- [x] `remove(id)` (a node takes its lines with it).
+- [x] Player, animated SVG, moments ("− A disappears") and the trace handle removal; ids are
+      computed once per timeline (`timelineIds`), names are captured on each command.
 
-### 3. Scripted and layout motion (do first: the user's example is a tree reorganising)
-- [ ] Easing: `move(id, x, y, dur, "smooth")` (ease-in-out; linear stays the default so old outputs don't change).
-- [ ] `pos(id)`: where an object is at the current script time (also mid-move, also under physics).
-- [ ] `tree_layout(root, dur?)`: every node of the tree glides to tidy tree positions (children
-      left to right by x), so a rotation is "rewire, then tidy".
+### 3. Scripted and layout motion
+- [x] Easing: `move(id, x, y, dur, "smooth")`; linear stays the default.
+- [x] `pos(id)`: where a node is at the current script time (also mid-move).
+- [x] `tree_layout(root, dur?)`: a single child keeps its side; the tree keeps its top.
 
 ### 4. Forces: one general mechanism (design to be agreed first)
 - [ ] Not a catalogue of physics forces. Objects can have a velocity; a **rule** (a few lines of Lua,
@@ -38,21 +38,26 @@ code and from the Steps tab, not only on the Stage.
 - [ ] Show the design to the user before building it.
 
 ### 5. Behaviour (Steps) gets the same powers
-- [ ] Canvas toolbar in Behaviour: Select (drag = move), shapes (click = the object pops in at this
-      step), **Connect** (drag node to node). (A Push tool comes with 4.)
-- [ ] Context actions for the selection: colour, Remove, Tidy tree from here (force actions come with 4).
-- [ ] Objects created by steps can be targeted by later steps; deleting a step removes what depends on it.
+- [x] The tool row works in Behaviour: Select (drag = move step), a shape (click = the object pops
+      in at this step), line/arrow (drag = connect step).
+- [x] Actions for the selection: colour, Tidy tree, Remove; the label of an object a step added.
+- [x] Objects created by steps (`s1`, `s2`, …) can be used by later steps; a step stays only while
+      its object exists at that point, so deleting an "add" step cascades.
+- [ ] Later: a Push tool once 4 is agreed.
 
 ### 6. Lively, still uncluttered
-- [ ] Icon toolbar with the active tool in the accent colour; the deck's red as a second accent for forces.
-- [ ] New objects pop in; motion trails in the preview (toggle, never exported).
-- [ ] Screenshot every tab; check for clutter.
+- [x] Tool row with the active tool in the accent colour; red second accent for things appearing,
+      disappearing and moving (step markers, trails).
+- [x] New objects pop in; a new step slides into the list; faint move trails in Behaviour
+      (never exported). Respects reduced motion.
+- [ ] Motion trails in the Result preview (toggle) — maybe; check it doesn't add clutter.
 
 ### 7. Examples, docs, tests
-- [ ] Examples: tree rotation (rewire + tree_layout), shapes (network: routers and packets);
-      force examples once 4 is agreed.
-- [ ] README, ARCHITECTURE (shapes, motion, physics, API) and this file updated as each phase lands.
-- [ ] Tests per phase; commit per phase (local), push when asked.
+- [x] Examples: Tree rotation (rewire + tree_layout), Router network (shapes, arrows, pos, remove).
+- [x] README, ARCHITECTURE updated.
+- [x] Tests: shapes, stage.lua round trip, API names, remove, stable ids, easing, pos, tree_layout,
+      arrows following jumps, steps that add/connect/remove/tidy and cascade.
+- [x] Chrome check of the animated SVG against the player (19,016 comparisons).
 
 ## Done: exported SVG, code viewer, frames, landmarks
 

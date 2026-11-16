@@ -25,6 +25,17 @@
   <main class="workspace">
     <!-- Left: the one canvas for the current tab -->
     <div class="canvas-col">
+      <div id="tools" class="tools" role="toolbar" aria-label="tools">
+        <button type="button" data-tool="select" title="Select and drag (V)" aria-label="select"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3l10.5 6.2-4.6 1.3-2.4 4.4z"/></svg></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" data-tool="circle" title="Circle (C)" aria-label="circle"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/></svg></button>
+        <button type="button" data-tool="rect" title="Rectangle (R)" aria-label="rectangle"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="5.5" width="14" height="9" rx="2"/></svg></button>
+        <button type="button" data-tool="triangle" title="Triangle (T)" aria-label="triangle"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5l7 12.5H3z"/></svg></button>
+        <button type="button" data-tool="text" title="Text (X)" aria-label="text"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 5h11M10 5v11"/></svg></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" data-tool="line" title="Line: drag from one object to another (L)" aria-label="line"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5l11-11"/><circle cx="4.5" cy="15.5" r="1.6" class="dot"/><circle cx="15.5" cy="4.5" r="1.6" class="dot"/></svg></button>
+        <button type="button" data-tool="arrow" title="Arrow: drag from one object to another (A)" aria-label="arrow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5l11-11M9 4.5h6.5V11"/></svg></button>
+      </div>
       <div id="editor" class="canvas editor"></div>
       <div id="preview" class="canvas" hidden></div>
       <div id="player" class="player" hidden>
@@ -49,7 +60,7 @@
     <aside class="panel">
       <div data-panel="stage">
         <h2>Set the stage</h2>
-        <p class="hint">Draw the starting picture: nodes and the lines between them.</p>
+        <p class="hint">Draw the starting picture: shapes, text, and the lines and arrows between them.</p>
         <div class="inspector">
           <span id="selection">Nothing selected</span>
           <label>Label <input id="label" type="text" disabled autocomplete="off"></label>
@@ -76,8 +87,13 @@
         </div>
 
         <div data-subpanel="steps">
-          <p id="target" class="hint">Click a node or line on the canvas, then pick a colour. Drag a node to record a move.</p>
+          <p id="target" class="hint">Click an object, then pick a colour. Drag to record a move. Shape tools add objects.</p>
           <div id="palette" class="palette" aria-label="colour"></div>
+          <div class="toolbar actions">
+            <button id="tidy" type="button" disabled title="Glide the tree below this node into tidy rows">Tidy tree</button>
+            <button id="remove-obj" type="button" class="danger" disabled title="The object disappears at this step (Delete)">Remove</button>
+            <label id="step-label-wrap" hidden>Label <input id="step-label" type="text" autocomplete="off"></label>
+          </div>
           <div class="toolbar">
             <label>Duration <input id="dur" type="number" min="0" max="10" step="0.1" value="0.5"> s</label>
             <button id="pause" type="button">+ Pause</button>
@@ -106,14 +122,18 @@
               <option value="bfs.lua">Breadth-first search</option>
               <option value="packets.lua">Packets A → B → D</option>
               <option value="sort.lua">Bubble sort (empty stage)</option>
+              <option value="rotation.lua">Tree rotation (empty stage)</option>
+              <option value="network.lua">Router network (empty stage)</option>
             </select>
             <button id="save-code" type="button" title="Download script.lua">Save</button>
             <button id="clear-code" type="button">Clear code</button>
           </div>
           <textarea id="script" spellcheck="false" wrap="off" aria-label="script.lua"></textarea>
           <p class="hint api">
-            <code>node(label, x, y)</code> <code>edge(a, b)</code> <code>color(id, c, dur?)</code>
-            <code>move(id, x, y, dur?)</code> <code>wait(t)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
+            <code>node(label, x, y)</code> <code>rect</code> <code>triangle</code> <code>text</code>
+            <code>edge(a, b)</code> <code>arrow(a, b)</code> <code>color(id, c, dur?)</code>
+            <code>move(id, x, y, dur?, "smooth"?)</code> <code>remove(id)</code> <code>wait(t)</code>
+            <code>pos(id)</code> <code>tree_layout(root, dur?)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
           </p>
         </div>
 

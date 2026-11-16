@@ -11,16 +11,20 @@ and show every step of the process. Source notes: [`idea.txt`](idea.txt).
 ## 1. Scope
 
 **In V1**
-- **GUI editor (web page):** drag and drop nodes and edges, then save the stage
-- **GUI steps:** build simple behaviour without code (colour, move, pause; in sequence or together)
-- Shapes: `circle`, `line`, `text`
-- Lua API: `node`, `edge`, `color`, `move`, `wait`, `neighbors`, `edge_of`
+- **GUI editor (web page):** a tool row (select, circle, rectangle, triangle, text, line, arrow);
+  drag and drop the starting picture, then save the stage
+- **GUI steps:** build behaviour without code: colour, move, pause, and objects that appear,
+  connect and disappear while it plays, plus "tidy the tree"; in sequence or together
+- Shapes: `circle`, `rect`, `triangle`, `text`; lines and arrows between them
+- Lua API: `node`, `rect`, `triangle`, `text`, `edge`, `arrow`, `color`, `move` (linear or
+  `"smooth"`), `remove`, `wait`, `pos`, `neighbors`, `edge_of`, `tree_layout`
 - In-page preview that works in **frames** (the MP4's frames), **moments** (frames where a change
   has just finished, with the step or line that made it) and a trace of every pipeline stage
 - Output: **MP4 video** (SVG frames encoded by ffmpeg), **animated SVG** (one self-playing file),
   and a still SVG of any frame. Size, frame rate, font and background are adjustable
 
-**Not in V1:** forces/physics, plugins, loops/conditions in the GUI steps, LLM translation.
+**Not in V1:** forces (one general mechanism is being designed), plugins, loops/conditions in the
+GUI steps, LLM translation.
 
 **Technology:** JavaScript (ES modules) for the engine and the web page; Lua runs in the
 **Fengari** VM (Lua 5.3 written in JS), so the same engine code runs in the browser and in Node.
@@ -83,8 +87,16 @@ runs stage.lua → steps.lua → script.lua in one Lua state, one clock:
 color(A, "red", 0.5)
 color(edge_of(A, B), "red", 0.5); wait(0.5)   -- "with previous": one shared wait
 move(B, 403, 40, 0.5); wait(0.5)
+E = rect("E", 520, 120)                       -- an object that appears at this step
+arrow(B, E)
+remove(edge_of(A, C))
+tree_layout(A, 0.5); wait(0.5)                -- glide the tree into tidy rows
 ```
-While building steps, the canvas shows the stage *after* the steps, computed by the same engine.
+While building steps, the canvas shows the stage *after* the steps, computed by the same engine,
+with faint trails where things moved. Objects that steps create have their own ids (`s1`, `s2`, …;
+stage objects have numbers), so later steps can colour, move or remove them. A step stays only
+while its object exists at that point in the list: deleting the step that added an object also
+deletes the steps that used it.
 
 **Frames are the unit** *(the page, the CLI and the MP4 agree)*
 Frame `i` is at `round(i × 1000 / fps)` ms, and the last frame is at or after the end, so the
@@ -94,29 +106,47 @@ A **moment** is the first frame at or after a change ends; each moment names wha
 it came from (`Step 3`, `script.lua:6`).
 
 **Exported SVG is meant to be reused**
-Every object has an id and a class, shared styling is one `<style>` block, one element per line:
+Every object has an id and a class, shared styling is one `<style>` block, one element per line.
+Every shape is drawn around its centre and placed with one `translate()`, so a move is one
+transform whatever the shape:
 ```svg
 <line id="A-B" class="edge" x1="100" y1="180" x2="270" y2="90" stroke="#e53935"/>
-<g id="A" class="node">
-  <circle cx="100" cy="180" r="24" fill="#e53935"/>
-  <text x="100" y="186" fill="#ffffff">A</text>
+<polyline id="B-E" class="edge arrow" points="270,90 395,105 520,120" stroke="#888888" marker-mid="url(#arrowhead)"/>
+<g id="A" class="node circle" transform="translate(100 180)">
+  <circle r="24" fill="#e53935"/>
+  <text y="6" fill="#ffffff">A</text>
 </g>
 ```
-Ids are the labels (`A`, `A-B`), or `node-3` when a label isn't a safe id (`5`, `p 1`, a duplicate).
-They depend only on objects created earlier, so they are the same in every frame. The page itself
-draws an *inline* flavour without ids or `<style>` (inline SVG shares the page's DOM). Both flavours
-were checked with librsvg to give identical pixels to each other and to the renderer before this change.
+An arrow is a polyline through its middle, where the arrowhead sits (a marker that takes the
+arrow's colour). Ids are the labels (`A`, `A-B`), or `node-3` when a label isn't a safe id (`5`,
+`p 1`, a duplicate). They are computed once from every object the timeline ever creates
+(`timelineIds`), so they are the same in every frame, also after objects are removed. The page
+itself draws an *inline* flavour without ids or `<style>` (inline SVG shares the page's DOM). Both
+flavours give identical pixels in librsvg; compared with v1.0.0 (`cx`/`cy` instead of
+`translate()`), 4 of 89 sampled frames differ by at most 2 in a colour channel (anti-aliasing).
 
 **Record, then play**
 A script runs instantly, but the animation takes time. So API calls don't draw anything.
 They append commands to a timeline at the current *script clock*:
 - Verbs (`color`, `move`) start at the current clock and last `dur` seconds (default 0.5 s).
+- Creating and removing are instant: `create` and `remove` commands.
 - `wait(t)` advances the clock by `t`.
+
+Each command also records the object's name at that moment (`cmd.name`) and the line that made it
+(`cmd.src`), so traces and moments read well after the object is gone.
 
 The player then computes the scene at any time `t`:
 `scene(t)` = every command whose start time is `≤ t`, applied in order. A command that is
-still in progress is interpolated: colours blend and positions move linearly. A new tween
-starts from wherever the property currently is.
+still in progress is interpolated: colours blend; positions move linearly, or along the
+`"smooth"` curve (CSS `ease-in-out`, the same curve SMIL uses in the animated SVG). A new tween
+starts from wherever the property currently is, so a move can change direction mid-move.
+
+**Movement is ordinary moves**
+`pos(id)` tells a script where a node is right now (also halfway through a move), and
+`tree_layout(root)` computes tidy positions for the tree below `root` (a single child keeps its
+side, as in a binary search tree) and emits one smooth move per node. So a rotation in a
+balanced tree is: rewire the lines, then `tree_layout` (see `examples/rotation.lua`). Every frame
+stays exact because nothing is simulated.
 
 ---
 
@@ -126,27 +156,30 @@ starts from wherever the property currently is.
 core/      shared engine (no DOM, no Node APIs; runs in browser and Node)
 node/      CLI, local web server, video export
 web/       editor page
-examples/  stage.lua, dfs.lua, bfs.lua, packets.lua, sort.lua
+examples/  stage.lua, dfs.lua, bfs.lua, packets.lua, sort.lua, rotation.lua, network.lua
 test/      node:test suites
 ```
 
 | File | Responsibility |
 |------|----------------|
-| `core/scene.js` | Objects (nodes, edges), `neighbors`, `edgeOf`, delete with edge cleanup |
+| `core/scene.js` | Objects (nodes with a shape, edges or arrows), `neighbors`, `edgeOf`, delete with edge cleanup |
+| `core/shapes.js` | Shape geometry: outline at the origin, size, hit test, label position |
+| `core/easing.js` | `linear` and `smooth` easing, and the matching SMIL `keySplines` |
+| `core/layout.js` | `treeLayout`: tidy positions for a tree (used by `tree_layout`) |
 | `core/timeline.js` | Command list + script clock (integer ms) |
-| `core/player.js` | `sceneAt(timeline, t)`: apply and interpolate commands; frame times |
+| `core/player.js` | `sceneAt(timeline, t)`: apply and interpolate commands (create, set, remove); frame times |
 | `core/frames.js` | Frame lookup, moments (landmarks), one frame as an exported SVG |
-| `core/svg.js` | Render a scene state as SVG: export flavour (ids, `<style>`) or inline (page) |
+| `core/svg.js` | Render a scene state as SVG: export flavour (ids, `<style>`) or inline (page); `timelineIds` |
 | `core/output.js` | Output settings (size, background, font, fps) and their validation |
 | `core/lua_api.js` | Fengari VM; binds the Lua API; errors as `script.lua:LINE: message` |
 | `core/stage_file.js` | Editor scene → `stage.lua` |
-| `core/steps.js` | GUI steps → `steps.lua` (+ which step is on which line); drop steps of deleted objects |
+| `core/steps.js` | GUI steps → `steps.lua` (+ which step is on which line); keep only steps whose object exists at that point |
 | `core/animated_svg.js` | Timeline → one self-playing SVG (same tweens as the player) |
 | `core/trace.js` | Readable report of every pipeline stage |
 | `node/export.js` | Write SVG frames; encode MP4 with ffmpeg |
 | `node/cli.js` | `stage.lua script.lua --trace --frame N out.svg --video out.mp4 --svg out.svg` |
 | `node/server.js` | Serves the page; `POST /api/export` runs the engine + ffmpeg (localhost only) |
-| `web/editor.js` | Stage mode: mouse/keyboard → scene edits. Behaviour mode: select, drag → move step |
+| `web/editor.js` | Tools; Stage mode: pointer → scene edits. Behaviour mode: drag → move step, shape → add step, line/arrow → connect step |
 | `web/app.js` | Tabs (Stage → Behaviour → Result), steps list, code, frame player, moments, output, downloads |
 | `web/codeview.js` | Generated code blocks: Copy, Save, Wrap, light highlighting |
 
@@ -155,23 +188,30 @@ test/      node:test suites
 
 **GUI editor actions**
 
-| Action | Result |
-|--------|--------|
-| Click empty canvas | Add a node (auto label `A`, `B`, …) |
-| Drag a node | Move it |
-| Shift-drag or right-drag from one node to another | Add an edge |
-| Double-click a node / edit the Label field | Rename it |
-| `Delete` key or Delete button | Remove the selection (a node's edges go with it) |
-| `Ctrl+S` / `Ctrl+O` | Save or load `stage.lua` |
+| Action | Stage | Behaviour (becomes a step) |
+|--------|-------|----------------------------|
+| Tool row: select `V`, circle `C`, rectangle `R`, triangle `T`, text `X`, line `L`, arrow `A` | | |
+| Shape tool, click empty canvas | Add that shape (auto label `A`, `B`, …; text asks for its words) | The object appears |
+| Drag an object | Move it | Record a move |
+| Line or arrow tool (or Shift-drag) from one object to another | Connect them | They get connected |
+| Pick a colour | | Colour change |
+| Tidy tree / Remove buttons, `Delete` key | Delete removes the selection (with its lines) | Tidy the tree below / the object disappears |
+| Double-click / the Label field | Rename | Rename an object a step added |
+| `Ctrl+S` / `Ctrl+O` | Save or load `stage.lua` | |
 
-The Stage tab only edits the **initial layout**. Behaviour (what happens over time) comes from the
-Steps tab (simple sequences) and/or `script.lua` (loops, algorithms).
+The Stage tab only edits the **starting picture**. What happens over time comes from the Steps tab
+(sequences without code) and/or `script.lua` (loops, algorithms).
 
 **Animated SVG:** each resolved tween becomes an `<animate>` (an instant change becomes a `<set>`).
-A move animates the circle, its label and the ends of every edge touching it; objects created
-later start hidden. When animations overlap, the later one wins, as in the player. It uses the same
-ids, classes and `<style>` as a still frame. It was checked in Chrome against the player at 20 ms
-steps for every example (colour, position and visibility of every object). It plays once.
+A move is an `<animateTransform type="translate">` on the object's group (smooth moves use
+`calcMode="spline"` with the same curve) plus `<animate>` on the ends of every line touching it.
+An arrow's points depend on both ends, so they are sampled every 10 ms while either end moves.
+Objects created later start hidden; removed ones are hidden from then on. When animations overlap,
+the later one wins, as in the player. It uses the same ids, classes and `<style>` as a still frame.
+It was checked in Chrome against the player every 23 ms for the DFS, rotation and network examples
+and a script of edge cases (position, colour and visibility of every object, arrow points). It
+matched everywhere except exactly on a command's start instant, where Chrome's clock is half a
+millisecond off. It plays once.
 
 **Video export:** ffmpeg, with no custom encoder. ffmpeg's built-in librsvg decoder reads the
 SVG frames directly:
@@ -187,14 +227,21 @@ background (a transparent one becomes white), because otherwise transparent area
 ## 5. Lua API (complete V1 surface)
 
 ```lua
-node(label, x, y)      -- create a circle with a text label; returns id
-edge(a, b)             -- create a line between two nodes; returns id
-color(id, c, dur?)     -- animate colour to c ("red", "#ff0000", ...)
-move(id, x, y, dur?)   -- animate position to (x, y)
-wait(t)                -- advance the script clock by t seconds
-neighbors(id)          -- list of nodes connected to id (edges are undirected, creation order)
-edge_of(a, b)          -- id of the edge between a and b, or nil
-print(...)             -- shown in the trace
+node(label, x, y)       -- create a circle with a text label; returns id
+rect(label, x, y)       -- a rounded rectangle with a label
+triangle(label, x, y)   -- a triangle with a label
+text(words, x, y)       -- just text (color() colours the text)
+edge(a, b)              -- create a line between two objects; returns id
+arrow(a, b)             -- a line with an arrowhead in the middle, pointing from a to b
+color(id, c, dur?)      -- animate colour to c ("red", "#ff0000", ...)
+move(id, x, y, dur?, ease?)  -- animate position to (x, y); ease "linear" (default) or "smooth"
+remove(id)              -- the object disappears (a node takes its lines with it)
+wait(t)                 -- advance the script clock by t seconds
+pos(id)                 -- x, y of a node right now (also halfway through a move)
+neighbors(id)           -- list of nodes connected to id (edges are undirected, creation order)
+edge_of(a, b)           -- id of the edge between a and b, or nil
+tree_layout(root, dur?, ease?)  -- move the tree below root into tidy rows (default 0.6 s, smooth)
+print(...)              -- shown in the trace
 ```
 
 With `neighbors` and `edge_of`, a script works on **whatever graph the teacher drew in the
@@ -253,10 +300,12 @@ This is actual output, and the test suite checks these numbers.
 5. Trace output and the DFS demo end-to-end
 6. Usability: exported SVG with ids and `<style>`, adjustable output, code viewer,
    frames as the unit, moments
+7. Shapes and movement: rect, triangle, text, arrows; remove; smooth moves, `pos`, `tree_layout`;
+   Steps that add, connect and remove objects; tool row
 
 ---
 
 ## 8. Later (out of scope now)
 
-Forces/physics, plugins (e.g. gas simulation), loops and conditions in GUI steps, saving steps, more shapes and
-composite objects (e.g. routers), and LLM translation of C++ to GEPV1 Lua.
+Forces (one general mechanism, design pending), plugins (e.g. gas simulation), loops and conditions
+in GUI steps, saving steps, composite objects (e.g. routers), and LLM translation of C++ to GEPV1 Lua.

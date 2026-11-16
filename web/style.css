@@ -6,6 +6,8 @@
   --border: #d9dee7;
   --accent: #2f6fde;
   --accent-soft: #e8f0fd;
+  --accent-2: #e5484d;        /* second accent: things appearing, disappearing and moving */
+  --accent-2-soft: #fdeced;
   --error-bg: #fdecec;
   --error: #b42318;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -50,7 +52,25 @@ h1 { margin: 0; font-size: 1.3rem; }
 .canvas { background: #fff; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; line-height: 0; }
 .canvas svg { width: 100%; height: auto; display: block; }
 .editor { cursor: crosshair; touch-action: none; user-select: none; }
+.editor[data-tool="select"] { cursor: default; }
 .editor [data-id] { cursor: pointer; }
+.editor[data-tool="line"] [data-id], .editor[data-tool="arrow"] [data-id] { cursor: alias; }
+/* a new object pops in (the class sits on an inner group, so its translate() stays put) */
+.editor .pop { animation: pop 0.38s cubic-bezier(0.3, 1.6, 0.5, 1) both; transform-box: fill-box; transform-origin: center; }
+@keyframes pop { from { transform: scale(0.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .editor .pop { animation: none; } }
+
+/* ---------- Tools: one row of icons above the canvas ---------- */
+.tools { display: flex; align-items: center; gap: 2px; margin-bottom: 8px; padding: 3px; width: max-content; max-width: 100%;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.tools button { display: grid; place-items: center; width: 34px; height: 30px; padding: 0; border: none; border-radius: 7px;
+  background: none; color: var(--muted); transition: background 0.12s, color 0.12s, transform 0.12s; }
+.tools button:hover { color: var(--text); background: var(--bg); }
+.tools button:active { transform: scale(0.92); }
+.tools button[aria-pressed="true"] { color: #fff; background: var(--accent); }
+.tools svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.tools svg .dot { fill: currentColor; stroke: none; }
+.tools .sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
 
 .panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -104,6 +124,10 @@ kbd { font: 0.75rem ui-monospace, Menlo, Consolas, monospace; background: var(--
 .moments .t { color: var(--muted); font-variant-numeric: tabular-nums; }
 .moments .changes { overflow-wrap: anywhere; }
 .moments .src { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+.op { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-right: 5px; border-radius: 50%;
+  font-style: normal; font-size: 0.75rem; font-weight: 700; line-height: 1; vertical-align: 1px; }
+.op.appear { background: var(--accent-2); color: #fff; }
+.op.disappear { background: var(--accent-2-soft); color: var(--accent-2); }
 .moments .dot, .steps .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #0003; vertical-align: -1px; }
 .summary-note { font-size: 0.8rem; margin-left: 4px; color: var(--muted); opacity: 0.85; }
 .settings { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 10px 0 4px; font-size: 0.9rem; }
@@ -123,6 +147,8 @@ button {
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+button.danger:hover:not(:disabled) { border-color: var(--accent-2); color: var(--accent-2); }
 input[type=text], input[type=number], select {
   font: inherit; font-size: 0.9rem; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
 }
@@ -138,10 +164,14 @@ input[type=number] { width: 4.5em; }
 .badge:empty { display: none; }
 
 .palette { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.actions { margin: 4px 0 10px; }
+.actions input { width: 8em; }
 .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); }
-.swatch:hover:not(:disabled) { box-shadow: 0 0 0 2px var(--accent); }
+.swatch { transition: transform 0.12s; }
+.swatch:hover:not(:disabled) { box-shadow: 0 0 0 2px var(--accent); transform: scale(1.12); }
 
 .steps { list-style: none; margin: 8px 0; padding: 0; max-height: 300px; overflow: auto; }
+.steps li.new { animation: slide-in 0.25s ease-out; }
 .steps li {
   display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 2px 8px;
   padding: 6px 4px; border-bottom: 1px solid var(--bg);
@@ -154,6 +184,8 @@ input[type=number] { width: 4.5em; }
 .steps .opts { grid-column: 2 / -1; display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--muted); }
 .steps .opts input, .steps .opts select { font-size: 0.8rem; padding: 2px 6px; }
 .empty { font-style: italic; }
+@keyframes slide-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .steps li.new { animation: none; } }
 .run-order { margin-top: 14px; }
 .note { background: #fff6e0; border: 1px solid #f3d38a; border-radius: 6px; padding: 8px 10px; font-size: 0.85rem; margin: 8px 0; line-height: 1.5; }
 .note button { margin-left: 4px; padding: 2px 8px; font-size: 0.8rem; }

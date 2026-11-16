@@ -21,7 +21,7 @@ export function luaString(s) {
   }) + '"';
 }
 
-function isUsableName(s) {
+export function isUsableName(s) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) && !LUA_KEYWORDS.has(s) && !RESERVED.has(s);
 }
 

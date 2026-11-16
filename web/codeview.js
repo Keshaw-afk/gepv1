@@ -1,6 +1,8 @@
 // A read-only code block with Copy, Save and Wrap, and light highlighting for Lua and SVG.
 // Used for every generated block on the page: stage.lua, steps.lua, the SVG of a frame, the trace.
 
+import { API_NAMES } from '../core/lua_api.js';
+
 const esc = (s) => s.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
 
 const RULES = {
@@ -8,7 +10,7 @@ const RULES = {
     ['comment', /--[^\n]*/],
     ['string', /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/],
     ['keyword', /\b(?:and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while)\b/],
-    ['api', /\b(?:node|edge|color|move|wait|neighbors|edge_of|print)\b(?=\s*\()/],
+    ['api', new RegExp(`\\b(?:${[...API_NAMES, 'print'].join('|')})\\b(?=\\s*\\()`)],
     ['number', /\b\d+(?:\.\d+)?\b/],
   ],
   xml: [

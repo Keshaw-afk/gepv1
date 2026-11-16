@@ -17,11 +17,13 @@ npm start            # http://localhost:8080  (PORT=xxxx npm start to change)
 ```
 
 The page has three tabs: **Stage → Behaviour → Result**.
-1. **Stage:** draw the starting picture (click to add, drag to move, Shift-drag or right-drag to connect).
+1. **Stage:** draw the starting picture with the tool row: circles, rectangles, triangles, text,
+   lines and arrows (pick a shape and click to add, drag to move, line or arrow tool to connect).
 2. **Behaviour:** either
-   - **Steps** (no code): click a node or line, then pick a colour; drag a node to record a move;
-     add pauses. Each step plays after the previous one, or "with previous". The generated
-     `steps.lua` is shown underneath.
+   - **Steps** (no code): click an object, then pick a colour; drag it to record a move; add
+     objects that appear partway, connect them, remove things, or **tidy the tree** so it glides
+     into rows; add pauses. Each step plays after the previous one, or "with previous". The
+     generated `steps.lua` is shown underneath.
    - **Code** for loops and algorithms (starts empty; DFS, BFS and others are under **Load example…**).
    Run plays stage → steps → code.
 3. **Result:** works in **frames**, the same frames as the MP4. Step with ‹ › or ←/→ (Shift: 10),
@@ -31,8 +33,13 @@ The page has three tabs: **Stage → Behaviour → Result**.
    size, frame rate, font and background (transparent for SVG). The SVG code of the current frame
    and the pipeline trace are in collapsible sections with Copy, Save and Wrap.
 
-Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a class (`node`,
-`edge`), and shared styling is one `<style>` block.
+Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a class (`node rect`,
+`edge arrow`, …), each shape is placed with one `translate()`, and shared styling is one `<style>`
+block.
+
+In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
+`remove(id)` makes it disappear and `tree_layout(root)` tidies a tree after it changes shape (see the
+**Tree rotation** example).
 
 ## CLI
 

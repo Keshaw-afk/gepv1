@@ -1,28 +1,50 @@
 // GUI editor with two modes:
-//   'stage'      drag-and-drop layout of nodes and edges (edits core/Scene)
-//   'behaviour'  shows the stage as it looks after the steps (this.view); clicking selects and
-//                dragging a node records a move step via onRecordMove. The layout is untouched.
+//   'stage'      draw the starting picture (edits core/Scene)
+//   'behaviour'  shows the picture after the steps (this.view); every edit becomes a step through
+//                the callbacks (record a move, add an object, connect two), the stage is untouched.
+// One tool is active at a time (see TOOLS): select, a shape, or line/arrow.
 // All model logic lives in core/; this file only turns pointer events into edits and re-renders.
 
-import { Scene, CANVAS, NODE_RADIUS } from '../core/scene.js';
+import { Scene, CANVAS } from '../core/scene.js';
 import { sceneToState } from '../core/player.js';
 import { renderSVG } from '../core/svg.js';
+import { halfSize, hits, SHAPES } from '../core/shapes.js';
 
+export const TOOLS = ['select', ...SHAPES, 'line', 'arrow'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const isShape = (tool) => SHAPES.includes(tool);
+const isLink = (tool) => tool === 'line' || tool === 'arrow';
+
+/** Keeps a shape's centre where the whole shape stays on the canvas. */
+export function keepInside(shape, label, x, y) {
+  const h = halfSize(shape, label);
+  return {
+    x: Math.round(clamp(x, h.x, CANVAS.width - h.x)),
+    y: Math.round(clamp(y, h.y, CANVAS.height - h.y)),
+  };
+}
 
 export class Editor {
   /**
-   * onChange() fires after any stage edit; onSelect(obj|null) when the selection changes;
-   * onRecordMove(id, x, y) when a node is dragged in behaviour mode.
+   * onChange()                  after any stage edit
+   * onSelect(obj | null)        when the selection changes (obj has id, kind, label, shape)
+   * onRename()                  double-click on a stage node
+   * onRecordMove(id, x, y)      behaviour: a node was dragged
+   * onAddObject(shape, label, x, y)  behaviour: a shape tool clicked empty space
+   * onConnect(a, b, directed)   behaviour: line/arrow dragged from node to node
+   * onTool(tool)                the tool changed
    */
-  constructor(container, { onChange, onSelect, onRename, onRecordMove }) {
+  constructor(container, callbacks) {
     this.el = container;
     this.scene = new Scene();
     this.mode = 'stage';
+    this.tool = 'circle';
     this.view = null; // behaviour mode: state to show, with editor ids
+    this.trails = []; // behaviour mode: [{from, to}] moves the steps make, drawn faintly
     this.selected = null;
-    this.drag = null; // { mode: 'move' | 'edge' | 'record', id, dx, dy, ghost, x, y, moved }
-    Object.assign(this, { onChange, onSelect, onRename, onRecordMove });
+    this.fresh = null; // id that just appeared (pops in)
+    this.drag = null; // { mode: 'move' | 'link' | 'record', id, dx, dy, ghost, x, y, moved }
+    Object.assign(this, callbacks);
 
     container.addEventListener('pointerdown', (e) => this.down(e));
     container.addEventListener('pointermove', (e) => this.move(e));
@@ -45,50 +67,87 @@ export class Editor {
     this.mode = mode;
     this.view = view;
     this.drag = null;
+    this.setTool(mode === 'stage' ? 'circle' : 'select');
+  }
+
+  setView(view, trails = []) {
+    this.view = view;
+    this.trails = trails;
     this.render();
   }
 
-  setView(view) {
-    this.view = view;
+  setTool(tool) {
+    this.tool = tool;
+    this.el.dataset.tool = tool;
     this.render();
+    this.onTool?.(tool);
+  }
+
+  /** The state on screen: the stage, or the picture after the steps. */
+  state() {
+    return this.mode === 'behaviour' && this.view ? this.view : sceneToState(this.scene);
   }
 
   render() {
-    let state = this.mode === 'behaviour' && this.view ? this.view : sceneToState(this.scene);
+    let state = this.state();
     const d = this.drag;
     if (d?.mode === 'record') {
       state = { ...state, nodes: state.nodes.map((nd) => (nd.id === d.id ? { ...nd, x: d.x, y: d.y } : nd)) };
     }
-    this.el.innerHTML = renderSVG(state, { interactive: true, selected: this.selected, ghost: d?.ghost });
+    this.el.innerHTML = renderSVG(state, {
+      interactive: true, selected: this.selected, ghost: d?.ghost, fresh: this.fresh,
+      trails: this.mode === 'behaviour' ? this.trails : null,
+    });
   }
 
   changed() { this.render(); this.onChange?.(); }
 
+  /** The object with this id as the editor sees it now (stage or picture after the steps). */
+  lookup(id) {
+    if (id === null || id === undefined) return null;
+    if (this.mode === 'stage') return this.scene.get(id) ?? null;
+    const st = this.state();
+    const nd = st.nodes.find((n) => n.id === id);
+    if (nd) return { ...nd, kind: 'node' };
+    const e = st.edges.find((x) => x.id === id);
+    return e ? { ...e, kind: 'edge' } : null;
+  }
+
   select(id) {
-    this.selected = id;
+    const obj = this.lookup(id);
+    this.selected = obj ? id : null;
     this.render();
-    this.onSelect?.(id ? this.scene.get(id) : null);
+    this.onSelect?.(obj);
+  }
+
+  /** Select an object that just appeared, with a little pop. */
+  popIn(id) {
+    this.fresh = id;
+    this.select(id);
+    clearTimeout(this.freshTimer);
+    this.freshTimer = setTimeout(() => { this.fresh = null; }, 400);
   }
 
   point(e) {
     const r = this.el.querySelector('svg').getBoundingClientRect();
     return {
-      x: clamp(((e.clientX - r.left) * CANVAS.width) / r.width, NODE_RADIUS, CANVAS.width - NODE_RADIUS),
-      y: clamp(((e.clientY - r.top) * CANVAS.height) / r.height, NODE_RADIUS, CANVAS.height - NODE_RADIUS),
+      x: clamp(((e.clientX - r.left) * CANVAS.width) / r.width, 0, CANVAS.width),
+      y: clamp(((e.clientY - r.top) * CANVAS.height) / r.height, 0, CANVAS.height),
     };
   }
 
   hitId(e) {
     const id = e.target.closest?.('[data-id]')?.dataset.id;
-    return id ? Number(id) : null;
+    if (!id) return null;
+    return /^\d+$/.test(id) ? Number(id) : id; // stage ids are numbers, step-made ids 's1', …
   }
 
   nodeAt(p) {
-    return this.scene.nodes().find((n) => Math.hypot(n.x - p.x, n.y - p.y) <= NODE_RADIUS) ?? null;
+    return [...this.state().nodes].reverse().find((n) => hits(n.shape ?? 'circle', n.label, n.x, n.y, p)) ?? null;
   }
 
   nextLabel() {
-    const used = new Set(this.scene.nodes().map((n) => n.label));
+    const used = new Set(this.state().nodes.map((n) => n.label));
     for (let i = 0; i < 26; i++) {
       const l = String.fromCharCode(65 + i);
       if (!used.has(l)) return l;
@@ -101,43 +160,53 @@ export class Editor {
   down(e) {
     const p = this.point(e);
     const id = this.hitId(e);
+    const obj = this.lookup(id);
     this.el.setPointerCapture(e.pointerId);
-    if (this.mode === 'behaviour') {
-      const nd = this.view?.nodes.find((v) => v.id === id);
-      if (nd) this.drag = { mode: 'record', id, dx: nd.x - p.x, dy: nd.y - p.y, x: nd.x, y: nd.y, x0: nd.x, y0: nd.y };
+    const linking = isLink(this.tool) || e.button === 2 || e.shiftKey;
+
+    if (obj?.kind === 'node' && linking) {
+      this.drag = { mode: 'link', id, directed: this.tool === 'arrow', ghost: { x1: obj.x, y1: obj.y, x2: p.x, y2: p.y } };
       this.select(id);
-      return;
-    }
-    if (id && this.scene.isNode(id)) {
-      const n = this.scene.get(id);
-      this.drag = e.button === 2 || e.shiftKey
-        ? { mode: 'edge', id, ghost: { x1: n.x, y1: n.y, x2: p.x, y2: p.y } }
-        : { mode: 'move', id, dx: n.x - p.x, dy: n.y - p.y };
+    } else if (obj?.kind === 'node') {
+      this.drag = this.mode === 'behaviour'
+        ? { mode: 'record', id, dx: obj.x - p.x, dy: obj.y - p.y, x: obj.x, y: obj.y, x0: obj.x, y0: obj.y }
+        : { mode: 'move', id, dx: obj.x - p.x, dy: obj.y - p.y };
       this.select(id);
-    } else if (id) {
-      this.select(id); // edge
-    } else if (e.button === 0) {
-      const nid = this.scene.addNode(this.nextLabel(), Math.round(p.x), Math.round(p.y));
-      this.select(nid);
-      this.changed();
+    } else if (obj) {
+      this.select(id); // a line
+    } else if (e.button === 0 && isShape(this.tool)) {
+      const label = this.tool === 'text' ? 'Text' : this.nextLabel();
+      const at = keepInside(this.tool, label, p.x, p.y);
+      if (this.mode === 'behaviour') {
+        this.onAddObject?.(this.tool, label, at.x, at.y);
+      } else {
+        const nid = this.scene.addNode(label, at.x, at.y, this.tool);
+        this.popIn(nid);
+        this.changed();
+        if (this.tool === 'text') this.onRename?.();
+      }
+    } else {
+      this.select(null);
     }
   }
 
   move(e) {
-    if (!this.drag) return;
+    const d = this.drag;
+    if (!d) return;
     const p = this.point(e);
-    if (this.drag.mode === 'record') {
-      this.drag.x = Math.round(clamp(p.x + this.drag.dx, NODE_RADIUS, CANVAS.width - NODE_RADIUS));
-      this.drag.y = Math.round(clamp(p.y + this.drag.dy, NODE_RADIUS, CANVAS.height - NODE_RADIUS));
+    if (d.mode === 'link') {
+      Object.assign(d.ghost, { x2: p.x, y2: p.y });
       this.render();
-    } else if (this.drag.mode === 'move') {
-      const n = this.scene.get(this.drag.id);
-      n.x = Math.round(clamp(p.x + this.drag.dx, NODE_RADIUS, CANVAS.width - NODE_RADIUS));
-      n.y = Math.round(clamp(p.y + this.drag.dy, NODE_RADIUS, CANVAS.height - NODE_RADIUS));
-      this.changed();
+      return;
+    }
+    const obj = this.lookup(d.id);
+    const at = keepInside(obj.shape ?? 'circle', obj.label, p.x + d.dx, p.y + d.dy);
+    if (d.mode === 'record') {
+      Object.assign(d, at);
+      this.render();
     } else {
-      Object.assign(this.drag.ghost, { x2: p.x, y2: p.y });
-      this.render();
+      Object.assign(this.scene.get(d.id), at);
+      this.changed();
     }
   }
 
@@ -147,10 +216,16 @@ export class Editor {
     if (d?.mode === 'record') {
       if (Math.hypot(d.x - d.x0, d.y - d.y0) > 3) this.onRecordMove?.(d.id, d.x, d.y);
       else this.render();
-    } else if (d?.mode === 'edge') {
+    } else if (d?.mode === 'link') {
       const target = this.nodeAt(this.point(e));
-      if (target && target.id !== d.id && this.scene.edgeOf(d.id, target.id) === null) {
-        this.select(this.scene.addEdge(d.id, target.id));
+      const st = this.state();
+      const exists = target && st.edges.some((x) => (x.a === d.id && x.b === target.id) || (x.a === target.id && x.b === d.id));
+      if (target && target.id !== d.id && !exists) {
+        if (this.mode === 'behaviour') {
+          this.onConnect?.(d.id, target.id, d.directed);
+          return;
+        }
+        this.popIn(this.scene.addEdge(d.id, target.id, d.directed));
       }
       this.changed();
     }
