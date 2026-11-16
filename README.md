@@ -22,7 +22,7 @@ The page has three tabs: **Stage → Behaviour → Result**.
 2. **Behaviour:** either
    - **Steps** (no code): click an object, then pick a colour; drag it to record a move; add
      objects that appear partway, connect them, remove things, or **tidy the tree** so it glides
-     into rows; add pauses. Each step plays after the previous one, or "with previous". The
+     into rows; push things and **let it move** under a rule; add pauses. Each step plays after the previous one, or "with previous". The
      generated `steps.lua` is shown underneath.
    - **Code** for loops and algorithms (starts empty; DFS, BFS and others are under **Load example…**).
    Run plays stage → steps → code.
@@ -40,6 +40,12 @@ block.
 In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
 `remove(id)` makes it disappear and `tree_layout(root)` tidies a tree after it changes shape (see the
 **Tree rotation** example).
+
+**Motion by rules:** `push(id, vx, vy)` gives a node a speed and `simulate(seconds, rule)` lets time
+run while a rule moves things: a Lua function of your own, or a ready-made one such as `"spread"`
+(a graph untangles itself) or `"fall"`. In Steps: the **Push** tool, then **Let it move**. The motion
+is worked out once and stored, so every frame and every export shows exactly the same thing (see
+the **Untangle** and **Push, fall, your own rule** examples).
 
 ## CLI
 

@@ -12,6 +12,8 @@ import { parseColor } from './colors.js';
 import { defaultColor } from './shapes.js';
 import { EASES, ease } from './easing.js';
 import { treeLayout } from './layout.js';
+import { RULES, MAX_SECONDS, SETTLED, simulate as runSimulation, pathAt } from './motion.js';
+import { halfSize } from './shapes.js';
 
 export const DEFAULT_DUR_MS = 500;
 const MAX_INSTRUCTIONS = 50_000_000; // guards against infinite loops freezing the page
@@ -20,7 +22,7 @@ const MAX_COMMANDS = 50_000;
 
 // Every global the API defines (generated variable names must never shadow these).
 export const API_NAMES = ['node', 'rect', 'triangle', 'text', 'edge', 'arrow', 'color', 'move', 'remove',
-  'wait', 'pos', 'neighbors', 'edge_of', 'tree_layout'];
+  'wait', 'pos', 'neighbors', 'edge_of', 'tree_layout', 'push', 'simulate'];
 
 export class ScriptError extends Error {}
 
@@ -75,15 +77,22 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   };
 
   // Where each node is over time (its latest move), so pos() and layouts know where things are
-  // mid-move: { from, to, t0, dur, ease }.
+  // mid-move: { from, to, t0, dur, ease } or, after simulate(), { …, path }.
   const place = new Map();
+  let simulating = null; // during simulate(): Map(id -> body), so pos() inside a rule is live
   const positionAt = (id, t) => {
+    const b = simulating?.get(id);
+    if (b) return { x: b.x, y: b.y };
     const m = place.get(id);
-    const f = m.dur === 0 ? 1 : ease(m.ease, Math.min(1, Math.max(0, (t - m.t0) / m.dur)));
-    return { x: m.from.x + (m.to.x - m.from.x) * f, y: m.from.y + (m.to.y - m.from.y) * f };
+    const f = m.dur === 0 ? 1 : Math.min(1, Math.max(0, (t - m.t0) / m.dur));
+    if (m.path) return pathAt(m.path, f);
+    const e = ease(m.ease, f);
+    return { x: m.from.x + (m.to.x - m.from.x) * e, y: m.from.y + (m.to.y - m.from.y) * e };
   };
+  const velocity = new Map(); // id -> {vx, vy} in px/s, set by push(), used by simulate()
   const moveTo = (id, x, y, dur, easing) => {
     const from = positionAt(id, timeline.clockMs);
+    velocity.delete(id); // a scripted move takes over from any push
     place.set(id, { from, to: { x, y }, t0: timeline.clockMs, dur, ease: easing });
     Object.assign(scene.get(id), { x, y });
     emit({ op: 'set', id, prop: 'pos', value: { x, y }, dur, ...(easing !== 'linear' && { ease: easing }) });
@@ -143,6 +152,83 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       emit({ op: 'remove', id });
       scene.remove(id);
       place.delete(id);
+      velocity.delete(id);
+      return 0;
+    },
+    push(L) {
+      const id = checkObj(1, 'node');
+      velocity.set(id, { vx: lauxlib.luaL_checknumber(L, 2), vy: lauxlib.luaL_checknumber(L, 3) });
+      return 0;
+    },
+    simulate(L) {
+      const seconds = lauxlib.luaL_checknumber(L, 1);
+      if (!(seconds > 0 && seconds <= MAX_SECONDS)) fail(`simulate: seconds must be more than 0 and at most ${MAX_SECONDS}`);
+      const durMs = toMs(seconds);
+      // the rule: nothing (drift), the name of a ready-made one, or a Lua function
+      let rule, name;
+      if (lua.lua_isnoneornil(L, 2)) {
+        name = 'drift';
+      } else if (lua.lua_type(L, 2) === lua.LUA_TFUNCTION) {
+        name = 'rule';
+        rule = (b) => {
+          lua.lua_pushvalue(L, 2);
+          for (const v of [b.id, b.x, b.y, b.vx, b.vy]) lua.lua_pushnumber(L, v);
+          lua.lua_call(L, 5, 2);
+          const a = [lua.lua_tonumber(L, -2), lua.lua_tonumber(L, -1)];
+          lua.lua_pop(L, 2);
+          return a;
+        };
+      } else {
+        name = to_jsstring(lauxlib.luaL_checkstring(L, 2));
+        if (!(name in RULES)) fail(`unknown rule '${name}' (use ${Object.keys(RULES).map((k) => `"${k}"`).join(', ')} or a function)`);
+      }
+      rule ??= RULES[name];
+      // options: { only = id or {ids}, target = id }
+      let only = null, target;
+      if (!lua.lua_isnoneornil(L, 3)) {
+        lauxlib.luaL_checktype(L, 3, lua.LUA_TTABLE);
+        const nodeAt = (what) => {
+          const id = lua.lua_tointeger(L, -1);
+          if (!scene.isNode(id)) fail(`simulate: ${what} must be a node`);
+          return id;
+        };
+        lua.lua_getfield(L, 3, to_luastring('only'));
+        if (lua.lua_istable(L, -1)) {
+          only = new Set();
+          for (let i = 1; i <= lua.lua_rawlen(L, -1); i++) { lua.lua_rawgeti(L, -1, i); only.add(nodeAt('only')); lua.lua_pop(L, 1); }
+        } else if (!lua.lua_isnil(L, -1)) {
+          only = new Set([nodeAt('only')]);
+        }
+        lua.lua_pop(L, 1);
+        lua.lua_getfield(L, 3, to_luastring('target'));
+        if (!lua.lua_isnil(L, -1)) target = nodeAt('target');
+        lua.lua_pop(L, 1);
+      }
+      if (name === 'towards' && target === undefined) fail('simulate "towards" needs a target: simulate(2, "towards", {target = id})');
+      const t0 = timeline.clockMs;
+      const bodies = scene.nodes().map((nd) => ({
+        id: nd.id, ...positionAt(nd.id, t0), ...(velocity.get(nd.id) ?? { vx: 0, vy: 0 }),
+        half: halfSize(nd.shape, nd.label), moves: (only ? only.has(nd.id) : true) && nd.id !== target,
+      }));
+      simulating = new Map(bodies.map((b) => [b.id, b]));
+      let result;
+      try {
+        result = runSimulation({ bodies, edges: scene.edges(), durMs, rule, target: target && simulating.get(target) });
+      } finally {
+        simulating = null;
+      }
+      for (const b of bodies.filter((x) => x.moves)) {
+        const settled = Math.hypot(b.vx, b.vy) < SETTLED; // slower than this counts as standing still
+        velocity.set(b.id, settled ? { vx: 0, vy: 0 } : { vx: b.vx, vy: b.vy });
+        const raw = result.paths.get(b.id);
+        if (raw.every((v, i) => Math.abs(v - raw[i % 2]) < 0.01)) continue; // didn't move
+        const path = raw.map((v) => Math.round(v * 100) / 100);
+        const from = { x: path[0], y: path[1] }, to = { x: path.at(-2), y: path.at(-1) };
+        place.set(b.id, { from, to, t0, dur: durMs, path });
+        Object.assign(scene.get(b.id), to);
+        emit({ op: 'set', id: b.id, prop: 'pos', value: to, dur: durMs, path, motion: name });
+      }
+      timeline.wait(durMs); // simulate lets time run, like wait()
       return 0;
     },
     pos(L) {

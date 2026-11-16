@@ -3,6 +3,7 @@
 
 import { mixColor } from './colors.js';
 import { ease } from './easing.js';
+import { pathAt } from './motion.js';
 
 function lerpValue(prop, from, to, f) {
   if (f >= 1) return to;
@@ -11,10 +12,12 @@ function lerpValue(prop, from, to, f) {
   return from; // other properties (e.g. label) switch when the tween ends
 }
 
-// A property is stored as a tween { from, to, t0, dur, ease? }; a constant is a tween with dur 0.
-// Easing applies here, so a move that starts mid-move starts from the eased position.
+// A property is stored as a tween { from, to, t0, dur, ease?, path? }; a constant is a tween with
+// dur 0. Easing applies here, so a move that starts mid-move starts from the eased position.
+// A simulated move (simulate()) has a path: a position every tick, followed exactly.
 function valueAt(tw, prop, t) {
   const f = tw.dur === 0 ? 1 : Math.min(1, Math.max(0, (t - tw.t0) / tw.dur));
+  if (tw.path && f < 1) return pathAt(tw.path, f);
   return lerpValue(prop, tw.from, tw.to, ease(tw.ease ?? 'linear', f));
 }
 
@@ -32,7 +35,7 @@ function replay(timeline, tMs, onSet) {
     } else if (c.op === 'set') {
       const o = objs.get(c.id);
       const from = valueAt(o.props[c.prop], c.prop, c.t); // start from wherever it is right now
-      o.props[c.prop] = { from, to: c.value, t0: c.t, dur: c.dur, ease: c.ease };
+      o.props[c.prop] = { from, to: c.value, t0: c.t, dur: c.dur, ease: c.ease, path: c.path };
       onSet?.(c, o.props[c.prop]);
     } else if (c.op === 'remove') {
       objs.delete(c.id);

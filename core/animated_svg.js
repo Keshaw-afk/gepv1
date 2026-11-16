@@ -7,6 +7,7 @@
 //   colour tween  -> <animate attributeName="fill|stroke"> (+ the label flips black/white)
 //   move tween    -> <animateTransform type="translate"> on the object's group (eased moves use the
 //                    same curve as SMIL keySplines) and <animate> on the ends of every line touching it
+//   simulated move -> the same, through every baked position (values="…")
 //   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves,
 //                    and set at once when an end jumps
 //   create at t>0 -> hidden until t; remove -> hidden from t (<set attributeName="visibility">)
@@ -32,6 +33,21 @@ function animateMove(from, to, t0, dur, ease) {
   const f = `${n(from.x)} ${n(from.y)}`, t = `${n(to.x)} ${n(to.y)}`;
   if (dur === 0) return `<animateTransform attributeName="transform" type="translate" from="${t}" to="${t}" begin="${s(t0)}" dur="0.001s" fill="freeze"/>`;
   return `<animateTransform attributeName="transform" type="translate" from="${f}" to="${t}" begin="${s(t0)}" dur="${s(dur)}"${smilEase(ease)} fill="freeze"/>`;
+}
+
+// A simulated move: one animation through every baked position (evenly spaced in time).
+function animatePathMove(tw) {
+  const v = [];
+  for (let i = 0; i < tw.path.length; i += 2) v.push(`${n(tw.path[i])} ${n(tw.path[i + 1])}`);
+  return `<animateTransform attributeName="transform" type="translate" values="${v.join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`;
+}
+function animatePathEnd(tw, k) {
+  const xs = [], ys = [];
+  for (let i = 0; i < tw.path.length; i += 2) { xs.push(n(tw.path[i])); ys.push(n(tw.path[i + 1])); }
+  return [
+    `<animate attributeName="x${k}" values="${xs.join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`,
+    `<animate attributeName="y${k}" values="${ys.join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`,
+  ];
 }
 
 // When does the label switch between black and white text during a colour tween? (or null)
@@ -85,12 +101,13 @@ export function renderAnimatedSVG(timeline, output = {}) {
       if (flip !== null && !overtaken) add('text', tw.id, set('fill', contrastText(tw.to), flip));
     } else if (tw.prop === 'pos') {
       const { from: f, to } = tw;
-      add('group', tw.id, animateMove(f, to, tw.t0, tw.dur, tw.ease));
+      add('group', tw.id, tw.path ? animatePathMove(tw) : animateMove(f, to, tw.t0, tw.dur, tw.ease));
       for (const e of edges) {
         if (e.props.directed) continue; // arrows are sampled below
         for (const end of ['a', 'b']) {
           if (e.props[end] !== tw.id) continue;
           const k = end === 'a' ? 1 : 2;
+          if (tw.path) { for (const a of animatePathEnd(tw, k)) add('edge', e.id, a); continue; }
           add('edge', e.id, animate(`x${k}`, n(f.x), n(to.x), tw.t0, tw.dur, tw.ease));
           add('edge', e.id, animate(`y${k}`, n(f.y), n(to.y), tw.t0, tw.dur, tw.ease));
         }

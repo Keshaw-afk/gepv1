@@ -4,7 +4,7 @@
 
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
-import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId } from '../core/steps.js';
+import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, INSTANT, RUNS_TIME } from '../core/steps.js';
 import { sceneAt, frameTimes, tweens } from '../core/player.js';
 import { renderSVG, paint } from '../core/svg.js';
 import { renderAnimatedSVG } from '../core/animated_svg.js';
@@ -19,7 +19,7 @@ const $ = (id) => document.getElementById(id);
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
   stage: 'Pick a shape, click empty space to add it · Drag: move · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Delete: remove',
-  behaviour: 'The picture after your steps. Select: click, then pick a colour; drag to record a move · A shape tool adds an object · Line or arrow: connect · Delete: remove',
+  behaviour: 'The picture after your steps. Select: click, then pick a colour; drag to record a move · A shape tool adds an object · Line or arrow: connect · Push: drag to give a speed, then Let it move · Delete: remove',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
@@ -69,6 +69,7 @@ const editor = new Editor($('editor'), {
     addStep({ op: 'add', id, shape, label, x, y });
     editor.popIn(id);
   },
+  onPush: (id, vx, vy) => addStep({ op: 'push', target: id, vx, vy }),
   onConnect: (a, b, directed) => {
     const id = nextStepId(steps);
     addStep({ op: 'connect', id, a, b, directed });
@@ -167,6 +168,13 @@ function addStep(step) {
   justAdded = null;
 }
 $('pause').addEventListener('click', () => addStep({ op: 'wait' }));
+// "Let it move": a few ready-made rules; anything else is a rule written in code
+const RULE_NAMES = { drift: 'drift (keep their pushes)', spread: 'spread out', fall: 'fall' };
+$('simulate').addEventListener('change', () => {
+  const rule = $('simulate').value;
+  $('simulate').value = '';
+  addStep({ op: 'simulate', rule, dur: Math.max(stepDur(), 100) });
+});
 $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); });
 
 function stepsChanged({ keepSelection = false } = {}) {
@@ -177,6 +185,13 @@ function stepsChanged({ keepSelection = false } = {}) {
   if (!keepSelection && editor.selected !== null && !editor.lookup(editor.selected)) editor.select(null);
 }
 
+function pathPoints(path) {
+  const pts = [];
+  for (let i = 0; i < path.length; i += 8) pts.push({ x: path[i], y: path[i + 1] }); // every 4th tick is plenty
+  pts.push({ x: path.at(-2), y: path.at(-1) });
+  return pts;
+}
+
 // The picture after all steps (what you are building on), plus faint trails of the moves.
 function showBehaviour() {
   try {
@@ -185,8 +200,8 @@ function showBehaviour() {
     showError(null);
     const view = toEditorIds(sceneAt(result.timeline, result.timeline.durationMs), result, editor.scene, steps, built.stepAtLine);
     const trails = tweens(result.timeline)
-      .filter((tw) => tw.prop === 'pos' && (tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
-      .map(({ from, to }) => ({ from, to }));
+      .filter((tw) => tw.prop === 'pos' && (tw.path || tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
+      .map((tw) => (tw.path ? pathPoints(tw.path) : [tw.from, tw.to]));
     editor.setView(view, trails);
   } catch (e) {
     showError(e.message);
@@ -211,6 +226,10 @@ function describeChange(name, c) {
     what.append(`move → (${Math.round(c.x)}, ${Math.round(c.y)})`);
   } else if (c.op === 'tidy') {
     what.append('tidy the tree');
+  } else if (c.op === 'push') {
+    what.append(`push → ${Math.round(Math.hypot(c.vx, c.vy))} px/s ${arrowFor(c.vx, c.vy)}`);
+  } else if (c.op === 'moved') {
+    what.append(`moves (${c.motion === 'rule' ? 'by a rule' : c.motion}) → (${Math.round(c.x)}, ${Math.round(c.y)})`);
   } else if (c.op === 'remove') {
     what.append('disappears');
   } else {
@@ -219,14 +238,20 @@ function describeChange(name, c) {
   return what;
 }
 
+const arrowFor = (vx, vy) => '→↘↓↙←↖↑↗'[Math.round(((Math.atan2(vy, vx) / Math.PI) * 4 + 8)) % 8];
+
 function describe(s, names) {
   if (s.op === 'wait') { const w = el('span', 'what'); w.append(el('b', null, 'Pause')); return w; }
+  if (s.op === 'simulate') {
+    const w = el('span', 'what');
+    w.append(el('i', 'op motion', '≈'), el('b', null, 'Let it move'), `: ${RULE_NAMES[s.rule]}`);
+    return w;
+  }
   if (s.op === 'add') return describeChange(s.label, { op: 'add', kind: kindName({ kind: 'node', shape: s.shape }).toLowerCase() });
   if (s.op === 'connect') return describeChange(names.nameOf(s.id), { op: 'connect', kind: s.directed ? 'arrow' : 'line' });
   return describeChange(names.nameOf(s.target), s);
 }
 
-const INSTANT = new Set(['add', 'connect', 'remove']); // these steps have no duration
 
 function renderSteps() {
   const list = $('steps');
@@ -256,7 +281,7 @@ function renderSteps() {
     durLabel.append(dur, ' s');
     if (!INSTANT.has(s.op)) opts.append(durLabel);
 
-    if (s.op !== 'wait' && prev && prev.op !== 'wait') {
+    if (!RUNS_TIME.has(s.op) && prev && !RUNS_TIME.has(prev.op)) {
       const when = el('select');
       when.setAttribute('aria-label', 'when');
       when.append(new Option('after previous', ''), new Option('with previous', '1'));
@@ -265,7 +290,7 @@ function renderSteps() {
       opts.append(when);
     }
     li.append(opts);
-    if (s.together && prev && prev.op !== 'wait') li.classList.add('together');
+    if (s.together && prev && !RUNS_TIME.has(prev.op)) li.classList.add('together');
     if (s === justAdded) li.classList.add('new');
     list.append(li);
   });
@@ -419,6 +444,7 @@ function sourceLabel(src) {
 function changeOf(c) {
   if (c.op === 'create') return { op: 'create', kind: c.kind === 'edge' ? (c.props.directed ? 'arrow' : 'line') : null };
   if (c.op === 'remove') return { op: 'remove' };
+  if (c.motion) return { op: 'moved', motion: c.motion, x: c.value.x, y: c.value.y };
   return c.prop === 'color' ? { op: 'color', color: c.value } : { op: 'move', x: c.value.x, y: c.value.y };
 }
 
@@ -526,7 +552,7 @@ $('dl-mp4').addEventListener('click', async () => {
 });
 
 // ---------- Keyboard ----------
-const TOOL_KEYS = { v: 'select', c: 'circle', r: 'rect', t: 'triangle', x: 'text', l: 'line', a: 'arrow' };
+const TOOL_KEYS = { v: 'select', c: 'circle', r: 'rect', t: 'triangle', x: 'text', l: 'line', a: 'arrow', p: 'push' };
 window.addEventListener('keydown', (e) => {
   const active = document.activeElement;
   const typing = active?.matches('textarea, select, input:not([type=range]):not([type=checkbox]):not([type=color])');
@@ -550,7 +576,7 @@ window.addEventListener('keydown', (e) => {
     if (tab === 'stage') editor.deleteSelected(); else removeSelectedObject();
   } else if (e.key === 'Escape') {
     editor.select(null);
-  } else if (TOOL_KEYS[e.key.toLowerCase()] && !e.shiftKey) {
+  } else if (TOOL_KEYS[e.key.toLowerCase()] && !e.shiftKey && !(tab === 'stage' && e.key.toLowerCase() === 'p')) {
     editor.setTool(TOOL_KEYS[e.key.toLowerCase()]);
   }
 });
@@ -570,6 +596,7 @@ function showTab(next, { replay = false } = {}) {
   $('player').hidden = editing;
   $('canvas-hint').textContent = HINTS[tab] ?? '';
   $('tools').hidden = !editing;
+  $('tools').dataset.mode = tab;
 
   if (editing) {
     editor.select(null);

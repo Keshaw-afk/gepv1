@@ -71,6 +71,9 @@ h1 { margin: 0; font-size: 1.3rem; }
 .tools svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .tools svg .dot { fill: currentColor; stroke: none; }
 .tools .sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
+.tools svg .faint { opacity: 0.45; }
+.tools[data-mode="stage"] .behaviour-only { display: none; }
+.tools [data-tool="push"][aria-pressed="true"] { background: var(--accent-2); }
 
 .panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -128,6 +131,7 @@ kbd { font: 0.75rem ui-monospace, Menlo, Consolas, monospace; background: var(--
   font-style: normal; font-size: 0.75rem; font-weight: 700; line-height: 1; vertical-align: 1px; }
 .op.appear { background: var(--accent-2); color: #fff; }
 .op.disappear { background: var(--accent-2-soft); color: var(--accent-2); }
+.op.motion { background: var(--accent-2-soft); color: var(--accent-2); }
 .moments .dot, .steps .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #0003; vertical-align: -1px; }
 .summary-note { font-size: 0.8rem; margin-left: 4px; color: var(--muted); opacity: 0.85; }
 .settings { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 10px 0 4px; font-size: 0.9rem; }

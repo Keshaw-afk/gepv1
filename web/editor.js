@@ -10,7 +10,8 @@ import { sceneToState } from '../core/player.js';
 import { renderSVG } from '../core/svg.js';
 import { halfSize, hits, SHAPES } from '../core/shapes.js';
 
-export const TOOLS = ['select', ...SHAPES, 'line', 'arrow'];
+export const TOOLS = ['select', ...SHAPES, 'line', 'arrow', 'push']; // push: Behaviour only
+export const PUSH_SPEED = 2; // a drag of 100 px gives 200 px/s
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const isShape = (tool) => SHAPES.includes(tool);
 const isLink = (tool) => tool === 'line' || tool === 'arrow';
@@ -32,6 +33,7 @@ export class Editor {
    * onRecordMove(id, x, y)      behaviour: a node was dragged
    * onAddObject(shape, label, x, y)  behaviour: a shape tool clicked empty space
    * onConnect(a, b, directed)   behaviour: line/arrow dragged from node to node
+ * onPush(id, vx, vy)          behaviour: push tool dragged from a node (velocity in px/s)
    * onTool(tool)                the tool changed
    */
   constructor(container, callbacks) {
@@ -43,7 +45,7 @@ export class Editor {
     this.trails = []; // behaviour mode: [{from, to}] moves the steps make, drawn faintly
     this.selected = null;
     this.fresh = null; // id that just appeared (pops in)
-    this.drag = null; // { mode: 'move' | 'link' | 'record', id, dx, dy, ghost, x, y, moved }
+    this.drag = null; // { mode: 'move' | 'link' | 'record' | 'push', id, dx, dy, ghost, x, y, moved }
     Object.assign(this, callbacks);
 
     container.addEventListener('pointerdown', (e) => this.down(e));
@@ -164,7 +166,10 @@ export class Editor {
     this.el.setPointerCapture(e.pointerId);
     const linking = isLink(this.tool) || e.button === 2 || e.shiftKey;
 
-    if (obj?.kind === 'node' && linking) {
+    if (obj?.kind === 'node' && this.tool === 'push' && this.mode === 'behaviour') {
+      this.drag = { mode: 'push', id, ghost: { x1: obj.x, y1: obj.y, x2: p.x, y2: p.y } };
+      this.select(id);
+    } else if (obj?.kind === 'node' && linking) {
       this.drag = { mode: 'link', id, directed: this.tool === 'arrow', ghost: { x1: obj.x, y1: obj.y, x2: p.x, y2: p.y } };
       this.select(id);
     } else if (obj?.kind === 'node') {
@@ -194,7 +199,7 @@ export class Editor {
     const d = this.drag;
     if (!d) return;
     const p = this.point(e);
-    if (d.mode === 'link') {
+    if (d.mode === 'link' || d.mode === 'push') {
       Object.assign(d.ghost, { x2: p.x, y2: p.y });
       this.render();
       return;
@@ -215,6 +220,10 @@ export class Editor {
     this.drag = null;
     if (d?.mode === 'record') {
       if (Math.hypot(d.x - d.x0, d.y - d.y0) > 3) this.onRecordMove?.(d.id, d.x, d.y);
+      else this.render();
+    } else if (d?.mode === 'push') {
+      const { x1, y1, x2, y2 } = d.ghost;
+      if (Math.hypot(x2 - x1, y2 - y1) > 5) this.onPush?.(d.id, (x2 - x1) * PUSH_SPEED, (y2 - y1) * PUSH_SPEED);
       else this.render();
     } else if (d?.mode === 'link') {
       const target = this.nodeAt(this.point(e));

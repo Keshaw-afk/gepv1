@@ -29,13 +29,13 @@ code and from the Steps tab, not only on the Stage.
 - [x] `pos(id)`: where a node is at the current script time (also mid-move).
 - [x] `tree_layout(root, dur?)`: a single child keeps its side; the tree keeps its top.
 
-### 4. Forces: one general mechanism (design to be agreed first)
-- [ ] Not a catalogue of physics forces. Objects can have a velocity; a **rule** (a few lines of Lua,
-      or a ready-made one picked in the GUI) changes it over time. Gravity, springs or "pull towards
-      a target" are just examples of rules.
-- [ ] Runs in step with the script clock on a fixed grid and is baked into frames, so every frame
-      stays exact and `pos()` works mid-motion.
-- [ ] Show the design to the user before building it.
+### 4. Motion by rules ("forces"): one general mechanism (design agreed 2026-11-16)
+- [x] `push(id, vx, vy)` + `simulate(seconds, rule, {only, target})`; a rule is a Lua function or a
+      ready-made example (drift, spread, fall, towards). Fixed 10 ms ticks, canvas walls.
+- [x] Baked: one `set pos` command with a path per moving node (one moment, one trace line); the
+      player, frames, MP4 and animated SVG follow the path exactly; deterministic.
+- [x] Push tool and "Let it move" step in Behaviour (writes `simulate(...)` into steps.lua).
+- [ ] Later, if wanted: collisions between objects; a rule written once and reused from Steps.
 
 ### 5. Behaviour (Steps) gets the same powers
 - [x] The tool row works in Behaviour: Select (drag = move step), a shape (click = the object pops
@@ -43,7 +43,7 @@ code and from the Steps tab, not only on the Stage.
 - [x] Actions for the selection: colour, Tidy tree, Remove; the label of an object a step added.
 - [x] Objects created by steps (`s1`, `s2`, …) can be used by later steps; a step stays only while
       its object exists at that point, so deleting an "add" step cascades.
-- [ ] Later: a Push tool once 4 is agreed.
+- [x] Push tool and Let it move.
 
 ### 6. Lively, still uncluttered
 - [x] Tool row with the active tool in the accent colour; red second accent for things appearing,
@@ -53,11 +53,14 @@ code and from the Steps tab, not only on the Stage.
 - [ ] Motion trails in the Result preview (toggle) — maybe; check it doesn't add clutter.
 
 ### 7. Examples, docs, tests
-- [x] Examples: Tree rotation (rewire + tree_layout), Router network (shapes, arrows, pos, remove).
+- [x] Examples: Tree rotation (rewire + tree_layout), Router network (shapes, arrows, pos, remove),
+      Untangle (spread), Push, fall, your own rule.
 - [x] README, ARCHITECTURE updated.
 - [x] Tests: shapes, stage.lua round trip, API names, remove, stable ids, easing, pos, tree_layout,
       arrows following jumps, steps that add/connect/remove/tidy and cascade.
-- [x] Chrome check of the animated SVG against the player (19,016 comparisons).
+- [x] Chrome check of the animated SVG against the player, simulations included (34,412 comparisons).
+- Note: "spread" is a plain force layout: a square cycle can settle as a bow-tie (one crossing);
+  trees untangle cleanly.
 
 ## Done: exported SVG, code viewer, frames, landmarks
 

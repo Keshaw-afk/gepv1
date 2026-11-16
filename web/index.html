@@ -35,6 +35,8 @@
         <span class="sep" aria-hidden="true"></span>
         <button type="button" data-tool="line" title="Line: drag from one object to another (L)" aria-label="line"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5l11-11"/><circle cx="4.5" cy="15.5" r="1.6" class="dot"/><circle cx="15.5" cy="4.5" r="1.6" class="dot"/></svg></button>
         <button type="button" data-tool="arrow" title="Arrow: drag from one object to another (A)" aria-label="arrow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5l11-11M9 4.5h6.5V11"/></svg></button>
+        <span class="sep behaviour-only" aria-hidden="true"></span>
+        <button type="button" data-tool="push" class="behaviour-only" title="Push: drag from an object to give it a speed, then Let it move (P)" aria-label="push"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="13" r="3"/><path d="M10 9.5l6-4.5M12.5 4.8l3.5.2-.6 3.4"/><path d="M8.5 16.5h3M10 18.5h4" class="faint"/></svg></button>
       </div>
       <div id="editor" class="canvas editor"></div>
       <div id="preview" class="canvas" hidden></div>
@@ -97,6 +99,12 @@
           <div class="toolbar">
             <label>Duration <input id="dur" type="number" min="0" max="10" step="0.1" value="0.5"> s</label>
             <button id="pause" type="button">+ Pause</button>
+            <select id="simulate" aria-label="let it move" title="Let time run while a rule moves things (uses the duration)">
+              <option value="" selected disabled>Let it move…</option>
+              <option value="drift">Drift (keep their pushes)</option>
+              <option value="spread">Spread out</option>
+              <option value="fall">Fall</option>
+            </select>
           </div>
           <p id="code-note" class="note" hidden>
             The <b>Code</b> tab also has <span id="code-count"></span> lines. They play after these steps.
@@ -124,6 +132,8 @@
               <option value="sort.lua">Bubble sort (empty stage)</option>
               <option value="rotation.lua">Tree rotation (empty stage)</option>
               <option value="network.lua">Router network (empty stage)</option>
+              <option value="untangle.lua">Untangle a graph (empty stage)</option>
+              <option value="rules.lua">Push, fall, your own rule (empty stage)</option>
             </select>
             <button id="save-code" type="button" title="Download script.lua">Save</button>
             <button id="clear-code" type="button">Clear code</button>
@@ -134,6 +144,7 @@
             <code>edge(a, b)</code> <code>arrow(a, b)</code> <code>color(id, c, dur?)</code>
             <code>move(id, x, y, dur?, "smooth"?)</code> <code>remove(id)</code> <code>wait(t)</code>
             <code>pos(id)</code> <code>tree_layout(root, dur?)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
+            <code>push(id, vx, vy)</code> <code>simulate(t, rule?, {only, target}?)</code>
           </p>
         </div>
 

@@ -116,7 +116,7 @@ function arrowheadPolygon(a, b, color) {
  * opts.interactive add data-id attributes and wide invisible hit areas (editor)
  * opts.ghost       {x1, y1, x2, y2} dashed line while dragging out a new edge (editor)
  * opts.fresh       id of an object that just appeared (editor: it pops in)
- * opts.trails      [{from, to}] faint dashed paths of moves (editor, Behaviour)
+ * opts.trails      [[{x, y}, …]] faint dashed paths of moves (editor, Behaviour)
  */
 export function renderSVG(state, opts = {}) {
   const o = { ...DEFAULT_OUTPUT, ...opts.output };
@@ -130,8 +130,9 @@ export function renderSVG(state, opts = {}) {
   if (ex && state.edges.some((e) => e.directed)) body.push(...arrowDefs());
   body.push(...backgroundRect(o, ex));
 
-  for (const { from: f, to } of opts.trails ?? []) {
-    body.push(`<line x1="${n(f.x)}" y1="${n(f.y)}" x2="${n(to.x)}" y2="${n(to.y)}" stroke="#e5484d" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round" opacity="0.6"/>`,
+  for (const pts of opts.trails ?? []) {
+    const to = pts.at(-1);
+    body.push(`<polyline points="${pts.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')}" fill="none" stroke="#e5484d" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>`,
       `<circle cx="${n(to.x)}" cy="${n(to.y)}" r="3.5" fill="#e5484d" opacity="0.6"/>`);
   }
 
