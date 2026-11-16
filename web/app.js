@@ -94,7 +94,7 @@ function stageSelected(obj) {
   $('selection').textContent = !obj ? 'Nothing selected' : isNode ? kindName(obj) : `${kindName(obj)} ${editor.scene.nameOf(obj.id)}`;
 }
 
-function behaviourSelected(obj) {
+function behaviourSelected(obj, { typing = false } = {}) {
   const isNode = obj?.kind === 'node';
   const name = obj ? stepNames(steps, editor.scene).nameOf(obj.id) : '';
   const made = obj && typeof obj.id === 'string'; // created by a step: its label can still change
@@ -105,7 +105,7 @@ function behaviourSelected(obj) {
   $('tidy').disabled = !isNode;
   $('remove-obj').disabled = !obj;
   $('step-label-wrap').hidden = !(made && isNode);
-  if (made && isNode) $('step-label').value = obj.label;
+  if (made && isNode && !typing) $('step-label').value = obj.label;
 }
 $('tidy').addEventListener('click', () => { if (editor.selected !== null) addStep({ op: 'tidy', target: editor.selected }); });
 $('remove-obj').addEventListener('click', removeSelectedObject);
@@ -119,6 +119,7 @@ $('step-label').addEventListener('input', () => {
   if (!add) return;
   add.label = $('step-label').value;
   stepsChanged({ keepSelection: true });
+  behaviourSelected(editor.lookup(editor.selected), { typing: true }); // the hint shows the new name
 });
 labelInput.addEventListener('input', () => editor.setLabel(labelInput.value));
 $('delete').addEventListener('click', () => editor.deleteSelected());
