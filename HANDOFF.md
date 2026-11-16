@@ -18,13 +18,14 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-16
   | `8b26cd4` | Behaviour hint follows a renamed step object |
   | `21003ca` | Motion by rules: `push`, `simulate`, Push tool, Let it move |
   | `5fc1b24` | Rules can't change things; Let it move defaults to 2 s |
-  | (this commit) | Verification tools in `tools/`, these notes, `CLAUDE.md` |
+  | `512aac0` | Verification tools in `tools/`, these notes, `CLAUDE.md` |
+  | (latest) | A push from the GUI brings its own Let it move (a push alone didn't move anything) |
 
 - **Not decided yet: the next version number.** Ask the user which bump; don't pick one. Points to
   raise: the exported SVG format changed (`cx`/`cy` → `translate()`, arrows are `<polyline>`
   with a marker; see §3), and the API grew a lot. Release with `npm version <x.y.z>`, then push the
   tag, **only when the user asks**.
-- `npm test`: 50 tests, all passing.
+- `npm test`: 51 tests, all passing.
 
 ## 2. What was added in this round (shapes and motion)
 
@@ -93,6 +94,11 @@ in older docs was only a persona for the prototype. Judge changes by these three
   `core/steps.js`): stage objects, plus earlier creates, minus earlier removes (with the lines of
   removed nodes). Deleting an "add" step therefore cascades. `INSTANT` steps have no duration;
   `RUNS_TIME` steps (pause, let it move) are lines of their own and nothing plays "with" them.
+- **A push from the GUI comes with a "let it move"** (`addPush` in `core/steps.js`): `push()` only
+  sets a speed and takes no time, so a push step on its own moved nothing and the video was only as
+  long as the other steps (the user hit this). Now the Push tool adds `push` + a 2 s drift; pushes made
+  one after another go in front of that same step, so they move together. In code, `push` still
+  needs an explicit `simulate`, which is the plain API and stays as it is.
 - **`API_NAMES`** in `lua_api.js` is the single list of API globals: generated variable names avoid
   them and the code highlighter is built from them. Add every new API function there.
 
@@ -100,7 +106,7 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 50 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
+| `npm test` | 51 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
 | `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 7 cases | open in Chrome: title says `34412 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
 | `npm run check:layout` | crossings / closest pair / bounds at the end of `examples/untangle.lua` | 0 crossings, closest 63 |
@@ -114,7 +120,7 @@ in older docs was only a persona for the prototype. Judge changes by these three
   `tools/animated_check.mjs` for every new kind of animation.
 - **GUI by hand** (no automated UI tests): Stage: each tool adds its shape, line/arrow drag connects,
   text asks for its words. Behaviour: a shape click adds an "appears" step and the object pops in;
-  colour, Tidy tree, Remove, Push + Let it move; delete an "add" step and its dependants go too;
+  colour, Tidy tree, Remove, Push (adds its own Let it move; two pushes share it); delete an "add" step and its dependants go too;
   Run → Moments say "Step N". Watch the console for errors and screenshot each tab for clutter.
 
 ## 5. Known issues and limits

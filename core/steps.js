@@ -168,6 +168,15 @@ export function buildSteps(steps, scene) {
 
 export const stepsToLua = (steps, scene) => buildSteps(steps, scene).code;
 
+// A push only gives a speed: nothing moves until time runs. So a push from the GUI brings a
+// "let it move" (drift) with it, and pushes made one after another share that one, so they move
+// together. Both are ordinary steps the user can change or delete.
+export function addPush(steps, push, durMs) {
+  const last = steps.at(-1);
+  if (last?.op === 'simulate' && steps.at(-2)?.op === 'push') return [...steps.slice(0, -1), push, last];
+  return [...steps, push, { op: 'simulate', rule: 'drift', dur: durMs, together: false }];
+}
+
 /**
  * Running the program numbers objects 1..n in the order it creates them, while the editor has its
  * own ids (stage ids with gaps after deletions, 's1'… for objects steps create). Returns a state

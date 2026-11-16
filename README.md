@@ -44,7 +44,8 @@ In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where 
 
 **Motion by rules:** `push(id, vx, vy)` gives a node a speed and `simulate(seconds, rule)` lets time
 run while a rule moves things: a Lua function of your own, or a ready-made one such as `"spread"`
-(a graph untangles itself) or `"fall"`. In Steps: the **Push** tool, then **Let it move**. The motion
+(a graph untangles itself) or `"fall"`. In Steps: drag with the **Push** tool (it adds a 2 s **Let it move** after it, which you can change),
+or pick a rule under **Let it move**. The motion
 is worked out once and stored, so every frame and every export shows exactly the same thing (see
 the **Untangle** and **Push, fall, your own rule** examples).
 

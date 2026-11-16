@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fengari from 'fengari';
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
-import { stepsToLua, buildSteps, pruneSteps, toEditorIds, stepNames, nextStepId } from '../core/steps.js';
+import { stepsToLua, buildSteps, pruneSteps, toEditorIds, stepNames, nextStepId, addPush } from '../core/steps.js';
 import { sceneAt } from '../core/player.js';
 import { Scene } from '../core/scene.js';
 
@@ -138,4 +138,19 @@ test('push and "let it move" steps: a simulate step is a line of its own and let
   const r = runProgram(fengari, { stage: toStageLua(s), steps: code });
   assert.equal(r.timeline.durationMs, 500 + 1000 + 500 + 2000);
   assert.ok(r.timeline.commands.some((c) => c.motion === 'drift' && c.name === 'A'));
+});
+
+test('a push from the GUI brings a "let it move", shared by pushes in a row', () => {
+  const scene = new Scene();
+  const a = scene.addNode('A', 100, 100), b = scene.addNode('B', 300, 100);
+  let steps = addPush([], { op: 'push', target: a, vx: 200, vy: 0, together: false }, 2000);
+  steps = addPush(steps, { op: 'push', target: b, vx: 0, vy: 100, together: false }, 2000);
+  assert.deepEqual(steps.map((s) => s.op), ['push', 'push', 'simulate']);
+  const { timeline } = runProgram(fengari, { stage: toStageLua(scene), script: stepsToLua(steps, scene) });
+  assert.equal(timeline.durationMs, 2000);
+  const end = sceneAt(timeline, 2000).nodes;
+  assert.ok(end[0].x > 400 && end[1].y > 250, 'both pushed objects moved');
+  // after another kind of step, a new push gets a new "let it move"
+  steps = addPush([...steps, { op: 'wait', dur: 500 }], { op: 'push', target: a, vx: -100, vy: 0, together: false }, 2000);
+  assert.deepEqual(steps.map((s) => s.op), ['push', 'push', 'simulate', 'wait', 'push', 'simulate']);
 });

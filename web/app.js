@@ -4,7 +4,7 @@
 
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
-import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, INSTANT, RUNS_TIME } from '../core/steps.js';
+import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, addPush, INSTANT, RUNS_TIME } from '../core/steps.js';
 import { sceneAt, frameTimes, tweens } from '../core/player.js';
 import { renderSVG, paint } from '../core/svg.js';
 import { renderAnimatedSVG } from '../core/animated_svg.js';
@@ -19,7 +19,7 @@ const $ = (id) => document.getElementById(id);
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
   stage: 'Pick a shape, click empty space to add it · Drag: move · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Delete: remove',
-  behaviour: 'The picture after your steps · Click, then pick a colour · Drag: record a move · Shapes add objects · Push, then Let it move',
+  behaviour: 'The picture after your steps · Click, then pick a colour · Drag: record a move · Shapes add objects · Push: drag from an object',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
@@ -69,7 +69,13 @@ const editor = new Editor($('editor'), {
     addStep({ op: 'add', id, shape, label, x, y });
     editor.popIn(id);
   },
-  onPush: (id, vx, vy) => addStep({ op: 'push', target: id, vx, vy }),
+  onPush: (id, vx, vy) => {
+    // a push comes with its own "let it move", so the object really moves (see addPush)
+    justAdded = { dur: stepDur(), together: false, op: 'push', target: id, vx, vy };
+    steps = addPush(steps, justAdded, LET_IT_MOVE_MS);
+    stepsChanged();
+    justAdded = null;
+  },
   onConnect: (a, b, directed) => {
     const id = nextStepId(steps);
     addStep({ op: 'connect', id, a, b, directed });
