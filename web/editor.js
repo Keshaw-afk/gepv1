@@ -11,7 +11,6 @@ import { renderSVG } from '../core/svg.js';
 import { halfSize, hits, SHAPES } from '../core/shapes.js';
 
 export const TOOLS = ['select', ...SHAPES, 'line', 'arrow', 'push']; // push: Behaviour only
-export const PUSH_SPEED = 2; // a drag of 100 px gives 200 px/s
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const isShape = (tool) => SHAPES.includes(tool);
 const isLink = (tool) => tool === 'line' || tool === 'arrow';
@@ -33,7 +32,7 @@ export class Editor {
    * onRecordMove(id, x, y)      behaviour: a node was dragged
    * onAddObject(shape, label, x, y)  behaviour: a shape tool clicked empty space
    * onConnect(a, b, directed)   behaviour: line/arrow dragged from node to node
- * onPush(id, vx, vy)          behaviour: push tool dragged from a node (velocity in px/s)
+ * onPush(id, dx, dy)          behaviour: push tool dragged from a node (the drag, in px)
    * onTool(tool)                the tool changed
    */
   constructor(container, callbacks) {
@@ -223,7 +222,7 @@ export class Editor {
       else this.render();
     } else if (d?.mode === 'push') {
       const { x1, y1, x2, y2 } = d.ghost;
-      if (Math.hypot(x2 - x1, y2 - y1) > 5) this.onPush?.(d.id, (x2 - x1) * PUSH_SPEED, (y2 - y1) * PUSH_SPEED);
+      if (Math.hypot(x2 - x1, y2 - y1) > 5) this.onPush?.(d.id, x2 - x1, y2 - y1);
       else this.render();
     } else if (d?.mode === 'link') {
       const target = this.nodeAt(this.point(e));

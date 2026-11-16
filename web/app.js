@@ -69,10 +69,9 @@ const editor = new Editor($('editor'), {
     addStep({ op: 'add', id, shape, label, x, y });
     editor.popIn(id);
   },
-  onPush: (id, vx, vy) => {
-    // a push comes with its own "let it move", so the object really moves (see addPush)
-    justAdded = { dur: stepDur(), together: false, op: 'push', target: id, vx, vy };
-    steps = addPush(steps, justAdded, LET_IT_MOVE_MS);
+  onPush: (id, dx, dy) => {
+    // lands where the drag ended, in its own "let it move" (see addPush)
+    ({ steps, push: justAdded } = addPush(steps, { target: id, dx, dy, dur: stepDur() }, LET_IT_MOVE_MS));
     stepsChanged();
     justAdded = null;
   },

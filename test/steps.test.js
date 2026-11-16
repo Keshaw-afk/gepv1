@@ -140,17 +140,21 @@ test('push and "let it move" steps: a simulate step is a line of its own and let
   assert.ok(r.timeline.commands.some((c) => c.motion === 'drift' && c.name === 'A'));
 });
 
-test('a push from the GUI brings a "let it move", shared by pushes in a row', () => {
+test('a push from the GUI lands where the drag ended, in a "let it move" shared by pushes in a row', () => {
   const scene = new Scene();
   const a = scene.addNode('A', 100, 100), b = scene.addNode('B', 300, 100);
-  let steps = addPush([], { op: 'push', target: a, vx: 200, vy: 0, together: false }, 2000);
-  steps = addPush(steps, { op: 'push', target: b, vx: 0, vy: 100, together: false }, 2000);
+  let { steps } = addPush([], { target: a, dx: 200, dy: 40 }, 2000);
+  ({ steps } = addPush(steps, { target: b, dx: 0, dy: 150 }, 2000));
   assert.deepEqual(steps.map((s) => s.op), ['push', 'push', 'simulate']);
   const { timeline } = runProgram(fengari, { stage: toStageLua(scene), script: stepsToLua(steps, scene) });
   assert.equal(timeline.durationMs, 2000);
-  const end = sceneAt(timeline, 2000).nodes;
-  assert.ok(end[0].x > 400 && end[1].y > 250, 'both pushed objects moved');
+  const [ea, eb] = sceneAt(timeline, 2000).nodes;
+  assert.ok(Math.hypot(ea.x - 300, ea.y - 140) < 1 && Math.hypot(eb.x - 300, eb.y - 250) < 1, 'both land where dragged');
+  // a longer "let it move" means a slower push that still lands there
+  steps[2].dur = 4000;
+  ({ steps } = addPush(steps, { target: a, dx: 100, dy: 0 }, 2000));
+  assert.equal(steps.at(-2).vx, 25);
   // after another kind of step, a new push gets a new "let it move"
-  steps = addPush([...steps, { op: 'wait', dur: 500 }], { op: 'push', target: a, vx: -100, vy: 0, together: false }, 2000);
-  assert.deepEqual(steps.map((s) => s.op), ['push', 'push', 'simulate', 'wait', 'push', 'simulate']);
+  ({ steps } = addPush([...steps, { op: 'wait', dur: 500 }], { target: a, dx: -100, dy: 0 }, 2000));
+  assert.deepEqual(steps.map((s) => s.op), ['push', 'push', 'push', 'simulate', 'wait', 'push', 'simulate']);
 });

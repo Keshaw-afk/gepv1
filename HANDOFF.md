@@ -97,7 +97,10 @@ in older docs was only a persona for the prototype. Judge changes by these three
 - **A push from the GUI comes with a "let it move"** (`addPush` in `core/steps.js`): `push()` only
   sets a speed and takes no time, so a push step on its own moved nothing and the video was only as
   long as the other steps (the user hit this). Now the Push tool adds `push` + a 2 s drift; pushes made
-  one after another go in front of that same step, so they move together. In code, `push` still
+  one after another go in front of that same step, so they move together. **The drag is where it
+  lands**, not a speed: speed = drag ÷ that step's length (the user found "speed = 2 × drag", which
+  flew 4× the drag and bounced, confusing). After landing it keeps the speed, which is what makes a
+  push different from a recorded move (a later fall or spread carries on from it). In code, `push` still
   needs an explicit `simulate`, which is the plain API and stays as it is.
 - **`API_NAMES`** in `lua_api.js` is the single list of API globals: generated variable names avoid
   them and the code highlighter is built from them. Add every new API function there.

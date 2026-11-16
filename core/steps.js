@@ -168,13 +168,21 @@ export function buildSteps(steps, scene) {
 
 export const stepsToLua = (steps, scene) => buildSteps(steps, scene).code;
 
-// A push only gives a speed: nothing moves until time runs. So a push from the GUI brings a
-// "let it move" (drift) with it, and pushes made one after another share that one, so they move
-// together. Both are ordinary steps the user can change or delete.
-export function addPush(steps, push, durMs) {
+// A push from the GUI: the user drags from an object to where it should be when the "let it move"
+// after it ends. push() only gives a speed and takes no time, so the push brings a "let it move"
+// (drift, durMs) with it, and its speed is the drag divided by that step's length: the object lands
+// where the drag ended, then keeps its speed for later rules. Pushes made one after another share
+// one "let it move", so they move together. Both are ordinary steps the user can change or delete.
+//   drag: { target, dx, dy } in px; returns the new step list and the push step
+export function addPush(steps, { dx, dy, ...push }, durMs) {
   const last = steps.at(-1);
-  if (last?.op === 'simulate' && steps.at(-2)?.op === 'push') return [...steps.slice(0, -1), push, last];
-  return [...steps, push, { op: 'simulate', rule: 'drift', dur: durMs, together: false }];
+  const shared = last?.op === 'simulate' && steps.at(-2)?.op === 'push';
+  const sec = (shared ? last.dur : durMs) / 1000;
+  const step = { together: false, ...push, op: 'push', vx: dx / sec, vy: dy / sec };
+  return {
+    steps: shared ? [...steps.slice(0, -1), step, last] : [...steps, step, { op: 'simulate', rule: 'drift', dur: durMs, together: false }],
+    push: step,
+  };
 }
 
 /**
