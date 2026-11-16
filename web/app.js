@@ -148,6 +148,8 @@ function describeChange(name, c) {
     what.append('colour → ', sw, ` ${c.color}`);
   } else if (c.op === 'move') {
     what.append(`move → (${Math.round(c.x)}, ${Math.round(c.y)})`);
+  } else if (c.op === 'remove') {
+    what.append('disappears');
   } else {
     what.append('appears');
   }
@@ -346,7 +348,7 @@ function sourceLabel(src) {
 }
 
 function changeOf(c) {
-  if (c.op === 'create') return { op: 'create' };
+  if (c.op === 'create' || c.op === 'remove') return { op: c.op };
   return c.prop === 'color' ? { op: 'color', color: c.value } : { op: 'move', x: c.value.x, y: c.value.y };
 }
 
@@ -362,7 +364,7 @@ function renderMoments() {
     const changes = el('span', 'changes');
     m.cmds.forEach((c, i) => {
       if (i) changes.append(', ');
-      changes.append(describeChange(player.result.scene.nameOf(c.id), changeOf(c)));
+      changes.append(describeChange(c.name, changeOf(c))); // the name when it happened
     });
     b.append(changes, el('span', 'src', [...new Set(m.cmds.map((c) => sourceLabel(c.src)))].filter(Boolean).join(', ')));
     b.title = `Frame ${m.frame}`;

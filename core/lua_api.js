@@ -1,20 +1,26 @@
 // Lua API: runs stage.lua + steps.lua + script.lua in an embedded Lua VM (Fengari) and turns every
 // API call into a command on the timeline, tagged with the file and line that made it
-// (cmd.src = { file: 'script.lua', line: 6 }). Nothing is drawn here (record, then play).
+// (cmd.src = { file: 'script.lua', line: 6 }) and the object's name at that moment (cmd.name), so
+// traces stay readable after an object is removed. Nothing is drawn here (record, then play).
 //
 // `fengari` is passed in so the same module works in Node (npm package) and in the
 // browser (window.fengari from fengari-web).
 
-import { Scene, DEFAULT_NODE_COLOR, DEFAULT_EDGE_COLOR } from './scene.js';
+import { Scene, DEFAULT_EDGE_COLOR } from './scene.js';
 import { Timeline, toMs } from './timeline.js';
 import { parseColor } from './colors.js';
+import { defaultColor } from './shapes.js';
+import { EASES, ease } from './easing.js';
+import { treeLayout } from './layout.js';
 
 export const DEFAULT_DUR_MS = 500;
 const MAX_INSTRUCTIONS = 50_000_000; // guards against infinite loops freezing the page
 const HOOK_EVERY = 100_000;
 const MAX_COMMANDS = 50_000;
 
-export const API_NAMES = ['node', 'edge', 'color', 'move', 'wait', 'neighbors', 'edge_of'];
+// Every global the API defines (generated variable names must never shadow these).
+export const API_NAMES = ['node', 'rect', 'triangle', 'text', 'edge', 'arrow', 'color', 'move', 'remove',
+  'wait', 'pos', 'neighbors', 'edge_of', 'tree_layout'];
 
 export class ScriptError extends Error {}
 
@@ -65,26 +71,55 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   };
   const emit = (cmd) => {
     if (timeline.commands.length >= MAX_COMMANDS) fail(`too many commands (limit ${MAX_COMMANDS})`);
-    return timeline.add({ ...cmd, src: caller() });
+    return timeline.add({ ...cmd, name: scene.nameOf(cmd.id), src: caller() });
+  };
+
+  // Where each node is over time (its latest move), so pos() and layouts know where things are
+  // mid-move: { from, to, t0, dur, ease }.
+  const place = new Map();
+  const positionAt = (id, t) => {
+    const m = place.get(id);
+    const f = m.dur === 0 ? 1 : ease(m.ease, Math.min(1, Math.max(0, (t - m.t0) / m.dur)));
+    return { x: m.from.x + (m.to.x - m.from.x) * f, y: m.from.y + (m.to.y - m.from.y) * f };
+  };
+  const moveTo = (id, x, y, dur, easing) => {
+    const from = positionAt(id, timeline.clockMs);
+    place.set(id, { from, to: { x, y }, t0: timeline.clockMs, dur, ease: easing });
+    Object.assign(scene.get(id), { x, y });
+    emit({ op: 'set', id, prop: 'pos', value: { x, y }, dur, ...(easing !== 'linear' && { ease: easing }) });
+  };
+  const optEase = (i, fallback) => {
+    if (lua.lua_isnoneornil(L, i)) return fallback;
+    const e = to_jsstring(lauxlib.luaL_checkstring(L, i));
+    if (!(e in EASES)) fail(`unknown easing '${e}' (use ${Object.keys(EASES).map((k) => `"${k}"`).join(' or ')})`);
+    return e;
+  };
+
+  const makeNode = (shape) => (L) => {
+    const label = to_jsstring(lauxlib.luaL_checkstring(L, 1));
+    const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
+    const id = scene.addNode(label, x, y, shape);
+    place.set(id, { from: { x, y }, to: { x, y }, t0: timeline.clockMs, dur: 0, ease: 'linear' });
+    emit({ op: 'create', id, kind: 'node', props: { label, shape, pos: { x, y }, color: defaultColor(shape) } });
+    lua.lua_pushinteger(L, id);
+    return 1;
+  };
+  const makeEdge = (directed) => (L) => {
+    const a = checkObj(1, 'node'), b = checkObj(2, 'node');
+    let id;
+    try { id = scene.addEdge(a, b, directed); } catch (e) { fail(e.message); }
+    emit({ op: 'create', id, kind: 'edge', props: { a, b, directed, color: DEFAULT_EDGE_COLOR } });
+    lua.lua_pushinteger(L, id);
+    return 1;
   };
 
   const api = {
-    node(L) {
-      const label = to_jsstring(lauxlib.luaL_checkstring(L, 1));
-      const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
-      const id = scene.addNode(label, x, y);
-      emit({ op: 'create', id, kind: 'node', props: { label, pos: { x, y }, color: DEFAULT_NODE_COLOR } });
-      lua.lua_pushinteger(L, id);
-      return 1;
-    },
-    edge(L) {
-      const a = checkObj(1, 'node'), b = checkObj(2, 'node');
-      let id;
-      try { id = scene.addEdge(a, b); } catch (e) { fail(e.message); }
-      emit({ op: 'create', id, kind: 'edge', props: { a, b, color: DEFAULT_EDGE_COLOR } });
-      lua.lua_pushinteger(L, id);
-      return 1;
-    },
+    node: makeNode('circle'),
+    rect: makeNode('rect'),
+    triangle: makeNode('triangle'),
+    text: makeNode('text'),
+    edge: makeEdge(false),
+    arrow: makeEdge(true),
     color(L) {
       const id = checkObj(1);
       const c = to_jsstring(lauxlib.luaL_checkstring(L, 2));
@@ -97,9 +132,33 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     move(L) {
       const id = checkObj(1, 'node');
       const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
-      const dur = optSeconds(4);
-      Object.assign(scene.get(id), { x, y });
-      emit({ op: 'set', id, prop: 'pos', value: { x, y }, dur });
+      moveTo(id, x, y, optSeconds(4), optEase(5, 'linear'));
+      return 0;
+    },
+    remove(L) {
+      const id = checkObj(1);
+      if (scene.isNode(id)) {
+        for (const e of scene.edges()) if (e.a === id || e.b === id) emit({ op: 'remove', id: e.id });
+      }
+      emit({ op: 'remove', id });
+      scene.remove(id);
+      place.delete(id);
+      return 0;
+    },
+    pos(L) {
+      const p = positionAt(checkObj(1, 'node'), timeline.clockMs);
+      lua.lua_pushnumber(L, p.x);
+      lua.lua_pushnumber(L, p.y);
+      return 2;
+    },
+    tree_layout(L) {
+      const root = checkObj(1, 'node');
+      const dur = optSeconds(2), easing = optEase(3, 'smooth');
+      const now = (id) => positionAt(id, timeline.clockMs);
+      for (const [id, to] of treeLayout(scene, root, now)) {
+        const p = now(id);
+        if (Math.abs(p.x - to.x) > 0.5 || Math.abs(p.y - to.y) > 0.5) moveTo(id, to.x, to.y, dur, easing);
+      }
       return 0;
     },
     wait(L) {

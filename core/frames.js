@@ -3,7 +3,7 @@
 // in the page is frame_00043.svg from `--frames` and the 44th picture of the video.
 
 import { sceneAt } from './player.js';
-import { renderSVG } from './svg.js';
+import { renderSVG, timelineIds } from './svg.js';
 
 /** The frame on screen at time t: the last frame that starts at or before t. */
 export function frameAt(times, tMs) {
@@ -43,5 +43,5 @@ export const frameName = (i) => `frame_${String(i).padStart(5, '0')}.svg`;
 /** Frame i as an exported SVG, with a comment saying which frame it is. */
 export function renderFrame(timeline, times, i, output) {
   const comment = `GEPV1 frame ${i} / ${times.length - 1}, t = ${(times[i] / 1000).toFixed(2)} s`;
-  return renderSVG(sceneAt(timeline, times[i]), { export: true, output, comment });
+  return renderSVG(sceneAt(timeline, times[i]), { export: true, output, comment, ids: timelineIds(timeline) });
 }

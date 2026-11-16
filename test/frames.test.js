@@ -20,8 +20,8 @@ test('exported SVG: every object has a safe, unique id; awkward labels fall back
   const { timeline } = run('A = node("A",0,0) T = node("time",0,0) F = node("5",0,0) P = node("p 1",0,0) A2 = node("A",0,0) edge(A, T) edge(F, P)');
   const svg = renderSVG(sceneAt(timeline, 0), { export: true });
   assert.deepEqual(ids(svg), ['A-time', 'node-3-node-4', 'A', 'time', 'node-3', 'node-4', 'node-5']);
-  assert.match(svg, /<g id="node-4" class="node">\n {4}<circle [^>]*\/>\n {4}<text [^>]*>p 1<\/text>\n {2}<\/g>/);
-  assert.match(svg, /<style>[\s\S]*\.node circle \{ stroke: #333333/);
+  assert.match(svg, /<g id="node-4" class="node circle" transform="translate\(0 0\)">\n {4}<circle r="24" [^>]*\/>\n {4}<text [^>]*>p 1<\/text>\n {2}<\/g>/);
+  assert.match(svg, /<style>[\s\S]*\.node circle, \.node rect, \.node polygon \{ stroke: #333333/);
 });
 
 test('exported ids stay the same in every frame, even when objects appear later', () => {

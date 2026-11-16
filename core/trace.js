@@ -4,18 +4,21 @@ import { sceneAt, frameTimes } from './player.js';
 
 const sec = (ms) => (ms / 1000).toFixed(2);
 
-function describe(cmd, scene) {
-  const name = scene.nameOf(cmd.id);
+// Names come from the command (the name when it ran), so removed objects still read well.
+function describe(cmd) {
+  const name = cmd.name ?? `#${cmd.id}`;
   if (cmd.op === 'create' && cmd.kind === 'node') {
-    return `create node ${name} (${Math.round(cmd.props.pos.x)},${Math.round(cmd.props.pos.y)})`;
+    const what = cmd.props.shape && cmd.props.shape !== 'circle' ? cmd.props.shape : 'node';
+    return `create ${what} ${name} (${Math.round(cmd.props.pos.x)},${Math.round(cmd.props.pos.y)})`;
   }
-  if (cmd.op === 'create') return `create edge ${name}`;
+  if (cmd.op === 'create') return `create ${cmd.props.directed ? 'arrow' : 'edge'} ${name}`;
+  if (cmd.op === 'remove') return `remove ${name}`;
   const v = cmd.prop === 'pos' ? `(${Math.round(cmd.value.x)},${Math.round(cmd.value.y)})` : cmd.value;
-  return `set ${name}.${cmd.prop} -> ${v}  dur=${sec(cmd.dur)}`;
+  return `set ${name}.${cmd.prop} -> ${v}  dur=${sec(cmd.dur)}${cmd.ease ? ` ${cmd.ease}` : ''}`;
 }
 
 /** Returns the trace as an array of lines. */
-export function formatTrace({ scene, timeline, log, stageCommands }, { fps = 25 } = {}) {
+export function formatTrace({ timeline, log, stageCommands }, { fps = 25 } = {}) {
   const cmds = timeline.commands;
   const stageCmds = cmds.slice(0, stageCommands);
   const lines = [];
@@ -23,7 +26,7 @@ export function formatTrace({ scene, timeline, log, stageCommands }, { fps = 25 
 
   lines.push(`[stage]     ${count(stageCmds, 'node')} nodes, ${count(stageCmds, 'edge')} edges (from stage.lua)`);
   lines.push(`[commands]`);
-  const what = cmds.map((c) => describe(c, scene));
+  const what = cmds.map((c) => describe(c));
   const width = Math.max(0, ...what.map((w) => w.length));
   cmds.forEach((c, i) => {
     const src = c.src ? `  ${c.src.file}:${c.src.line}` : '';
@@ -31,8 +34,9 @@ export function formatTrace({ scene, timeline, log, stageCommands }, { fps = 25 
   });
   for (const l of log) lines.push(`[print]     ${l}`);
 
-  const creates = cmds.filter((c) => c.op === 'create').length;
-  lines.push(`[timeline]  ${cmds.length} commands (${creates} create, ${cmds.length - creates} set), total ${sec(timeline.durationMs)} s`);
+  const countOp = (op) => cmds.filter((c) => c.op === op).length;
+  const removes = countOp('remove');
+  lines.push(`[timeline]  ${cmds.length} commands (${countOp('create')} create, ${countOp('set')} set${removes ? `, ${removes} remove` : ''}), total ${sec(timeline.durationMs)} s`);
 
   // Show the player interpolating: sample the first animated change halfway through.
   const tween = cmds.find((c) => c.op === 'set' && c.dur > 0);
@@ -43,7 +47,7 @@ export function formatTrace({ scene, timeline, log, stageCommands }, { fps = 25 
     const pos = (p) => `(${Math.round(p.x)},${Math.round(p.y)})`;
     const val = tween.prop === 'pos' ? pos(obj) : obj.color;
     const target = tween.prop === 'pos' ? pos(tween.value) : tween.value;
-    lines.push(`[player]    t=${sec(mid)}  ${scene.nameOf(tween.id)}.${tween.prop} = ${val}  (halfway to ${target})`);
+    lines.push(`[player]    t=${sec(mid)}  ${tween.name}.${tween.prop} = ${val}  (halfway to ${target})`);
   }
 
   const n = frameTimes(timeline.durationMs, fps).length;
