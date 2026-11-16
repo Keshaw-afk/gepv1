@@ -15,9 +15,10 @@ and show every step of the process. Source notes: [`idea.txt`](idea.txt).
 - **GUI steps:** build simple behaviour without code (colour, move, pause; in sequence or together)
 - Shapes: `circle`, `line`, `text`
 - Lua API: `node`, `edge`, `color`, `move`, `wait`, `neighbors`, `edge_of`
-- In-page preview (play / scrub) and a trace of every pipeline stage
+- In-page preview that works in **frames** (the MP4's frames), **moments** (frames where a change
+  has just finished, with the step or line that made it) and a trace of every pipeline stage
 - Output: **MP4 video** (SVG frames encoded by ffmpeg), **animated SVG** (one self-playing file),
-  and a still SVG of any frame
+  and a still SVG of any frame. Size, frame rate, font and background are adjustable
 
 **Not in V1:** forces/physics, plugins, loops/conditions in the GUI steps, LLM translation.
 
@@ -42,9 +43,10 @@ That makes the demo easy to explain.
 | **GUI editor** | teacher's drag and drop | `stage.lua` (plain API calls) |
 | **GUI steps** | clicks, colour picks, drags | `steps.lua` (plain API calls) |
 | **Lua API** | `stage.lua` + `script.lua` | calls such as `color(A, "red")` |
-| **Commands** | API calls | data records `{op, id, prop, value, t, dur}` |
+| **Commands** | API calls | data records `{op, id, prop, value, t, dur, src}` (`src` = file and line) |
 | **Timeline** | commands | commands in start-time order, script clock in integer ms |
 | **Player** | timeline + time `t` | scene state at `t` (interpolated) |
+| **Frames** | timeline + fps | frame `i` at `i/fps`, the last one at or after the end; moments |
 | **SVG renderer** | scene state | one SVG document per frame |
 | **Video export** | SVG frames | `out.mp4` |
 | **Animated SVG** | timeline (resolved tweens) | one `.svg` with `<animate>`/`<set>` elements |
@@ -84,6 +86,27 @@ move(B, 403, 40, 0.5); wait(0.5)
 ```
 While building steps, the canvas shows the stage *after* the steps, computed by the same engine.
 
+**Frames are the unit** *(the page, the CLI and the MP4 agree)*
+Frame `i` is at `round(i × 1000 / fps)` ms, and the last frame is at or after the end, so the
+finished picture is always a frame (DFS: 109 frames, 0 to 108, the last at 4.32 s). Frame 43 in the
+page is `frame_00043.svg` from `--frames`, `--frame 43` in the CLI and the 44th picture of the MP4.
+A **moment** is the first frame at or after a change ends; each moment names what changed and where
+it came from (`Step 3`, `script.lua:6`).
+
+**Exported SVG is meant to be reused**
+Every object has an id and a class, shared styling is one `<style>` block, one element per line:
+```svg
+<line id="A-B" class="edge" x1="100" y1="180" x2="270" y2="90" stroke="#e53935"/>
+<g id="A" class="node">
+  <circle cx="100" cy="180" r="24" fill="#e53935"/>
+  <text x="100" y="186" fill="#ffffff">A</text>
+</g>
+```
+Ids are the labels (`A`, `A-B`), or `node-3` when a label isn't a safe id (`5`, `p 1`, a duplicate).
+They depend only on objects created earlier, so they are the same in every frame. The page itself
+draws an *inline* flavour without ids or `<style>` (inline SVG shares the page's DOM). Both flavours
+were checked with librsvg to give identical pixels to each other and to the renderer before this change.
+
 **Record, then play**
 A script runs instantly, but the animation takes time. So API calls don't draw anything.
 They append commands to a timeline at the current *script clock*:
@@ -112,17 +135,20 @@ test/      node:test suites
 | `core/scene.js` | Objects (nodes, edges), `neighbors`, `edgeOf`, delete with edge cleanup |
 | `core/timeline.js` | Command list + script clock (integer ms) |
 | `core/player.js` | `sceneAt(timeline, t)`: apply and interpolate commands; frame times |
-| `core/svg.js` | Render a scene state as SVG (frames, preview and editor all use it) |
+| `core/frames.js` | Frame lookup, moments (landmarks), one frame as an exported SVG |
+| `core/svg.js` | Render a scene state as SVG: export flavour (ids, `<style>`) or inline (page) |
+| `core/output.js` | Output settings (size, background, font, fps) and their validation |
 | `core/lua_api.js` | Fengari VM; binds the Lua API; errors as `script.lua:LINE: message` |
 | `core/stage_file.js` | Editor scene → `stage.lua` |
-| `core/steps.js` | GUI steps → `steps.lua`; drop steps of deleted objects |
+| `core/steps.js` | GUI steps → `steps.lua` (+ which step is on which line); drop steps of deleted objects |
 | `core/animated_svg.js` | Timeline → one self-playing SVG (same tweens as the player) |
 | `core/trace.js` | Readable report of every pipeline stage |
 | `node/export.js` | Write SVG frames; encode MP4 with ffmpeg |
-| `node/cli.js` | `stage.lua script.lua --trace --video out.mp4 --svg out.svg` |
+| `node/cli.js` | `stage.lua script.lua --trace --frame N out.svg --video out.mp4 --svg out.svg` |
 | `node/server.js` | Serves the page; `POST /api/export` runs the engine + ffmpeg (localhost only) |
 | `web/editor.js` | Stage mode: mouse/keyboard → scene edits. Behaviour mode: select, drag → move step |
-| `web/app.js` | Tabs (Stage → Behaviour → Result), steps list, code, preview, downloads |
+| `web/app.js` | Tabs (Stage → Behaviour → Result), steps list, code, frame player, moments, output, downloads |
+| `web/codeview.js` | Generated code blocks: Copy, Save, Wrap, light highlighting |
 
 **Script safety:** only Lua's base, table, string and math libraries are loaded (no `io`, `os`,
 `require`, `dofile`). An instruction limit stops infinite loops so they can't freeze the page.
@@ -143,17 +169,18 @@ Steps tab (simple sequences) and/or `script.lua` (loops, algorithms).
 
 **Animated SVG:** each resolved tween becomes an `<animate>` (an instant change becomes a `<set>`).
 A move animates the circle, its label and the ends of every edge touching it; objects created
-later start hidden. When animations overlap, the later one wins, as in the player. It was checked
-in Chrome against the player at 20 ms steps for every example. It plays once.
+later start hidden. When animations overlap, the later one wins, as in the player. It uses the same
+ids, classes and `<style>` as a still frame. It was checked in Chrome against the player at 20 ms
+steps for every example (colour, position and visibility of every object). It plays once.
 
 **Video export:** ffmpeg, with no custom encoder. ffmpeg's built-in librsvg decoder reads the
 SVG frames directly:
 ```sh
 ffmpeg -framerate 25 -i frame_%05d.svg -c:v libx264 -pix_fmt yuv420p out.mp4
 ```
-The canvas is 640×360. Its size must be even, because the H.264 / `yuv420p` encoder
-requires even dimensions. Each frame has an opaque white background, because otherwise
-transparent areas encode as black.
+The scene is drawn in 640×360 units (`viewBox`); the output size is 1×, 2× or 3× that, so it is
+always even, which the H.264 / `yuv420p` encoder requires. Video frames always have an opaque
+background (a transparent one becomes white), because otherwise transparent areas encode as black.
 
 ---
 
@@ -202,15 +229,15 @@ dfs(A)
 ```
 [stage]     4 nodes, 3 edges (from stage.lua)
 [commands]
-  t=0.00  create node A (100,180)
+  t=0.00  create node A (100,180)         stage.lua:2
   …
-  t=0.00  set A.color -> red  dur=0.50
-  t=0.50  set A-B.color -> red  dur=0.50
-  t=0.80  set B.color -> red  dur=0.50
+  t=0.00  set A.color -> red  dur=0.50    script.lua:6
+  t=0.50  set A-B.color -> red  dur=0.50  script.lua:9
+  t=0.80  set B.color -> red  dur=0.50    script.lua:6
   …
 [timeline]  18 commands (7 create, 11 set), total 4.30 s
 [player]    t=0.25  A.color = #d98381  (halfway to red)
-[svg]       108 frames at 25 fps
+[svg]       109 frames at 25 fps
 [video]     out/dfs.mp4 (ffmpeg)
 ```
 This is actual output, and the test suite checks these numbers.
@@ -224,6 +251,8 @@ This is actual output, and the test suite checks these numbers.
 3. `export` + CLI: frames → MP4 via ffmpeg
 4. Web editor + preview + server-side export
 5. Trace output and the DFS demo end-to-end
+6. Usability: exported SVG with ids and `<style>`, adjustable output, code viewer,
+   frames as the unit, moments
 
 ---
 

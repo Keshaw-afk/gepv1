@@ -28,9 +28,19 @@
       <div id="editor" class="canvas editor"></div>
       <div id="preview" class="canvas" hidden></div>
       <div id="player" class="player" hidden>
-        <button id="play" type="button">Play</button>
-        <input id="scrub" type="range" min="0" max="0" value="0" aria-label="time">
-        <span id="time"></span>
+        <div class="transport">
+          <button id="prev" type="button" title="Previous frame (←)" aria-label="previous frame">‹</button>
+          <button id="play" type="button">Play</button>
+          <button id="next" type="button" title="Next frame (→)" aria-label="next frame">›</button>
+        </div>
+        <div class="track">
+          <input id="scrub" type="range" min="0" max="0" value="0" step="1" aria-label="frame">
+          <div id="ticks" class="ticks" aria-hidden="true"></div>
+        </div>
+        <span class="readout">
+          Frame <input id="frame" type="number" min="0" max="0" value="0" aria-label="frame number">
+          / <span id="last-frame">0</span> · <span id="time">0.00 s</span>
+        </span>
       </div>
       <p id="canvas-hint" class="hint"></p>
     </div>
@@ -97,6 +107,7 @@
               <option value="packets.lua">Packets A → B → D</option>
               <option value="sort.lua">Bubble sort (empty stage)</option>
             </select>
+            <button id="save-code" type="button" title="Download script.lua">Save</button>
             <button id="clear-code" type="button">Clear code</button>
           </div>
           <textarea id="script" spellcheck="false" wrap="off" aria-label="script.lua"></textarea>
@@ -118,6 +129,40 @@
           <button id="dl-frame" type="button" title="The frame shown above, as a still .svg">This frame</button>
         </div>
         <p id="export-status" class="hint"></p>
+        <details id="moments-details" open>
+          <summary>Moments <span id="moments-count" class="badge"></span></summary>
+          <p class="hint">Frames where a change has just finished. Click to jump; <kbd>[</kbd> <kbd>]</kbd> step through them.</p>
+          <ol id="moments" class="moments"></ol>
+          <p id="moments-empty" class="hint empty" hidden>Nothing changes over time yet.</p>
+        </details>
+        <details>
+          <summary>Output <span id="output-summary" class="summary-note"></span></summary>
+          <div class="settings">
+            <label for="out-scale">Size</label>
+            <select id="out-scale">
+              <option value="1">640 × 360</option>
+              <option value="2">1280 × 720</option>
+              <option value="3">1920 × 1080</option>
+            </select>
+            <label for="out-fps">Frame rate</label>
+            <select id="out-fps">
+              <option>12</option><option>15</option><option>24</option><option selected>25</option>
+              <option>30</option><option>50</option><option>60</option>
+            </select>
+            <label for="out-font">Font</label>
+            <select id="out-font">
+              <option value="sans-serif">Sans-serif</option>
+              <option value="serif">Serif</option>
+              <option value="monospace">Monospace</option>
+            </select>
+            <label for="out-bg">Background</label>
+            <span class="bg">
+              <input id="out-bg" type="color" value="#ffffff">
+              <label><input id="out-transparent" type="checkbox"> Transparent</label>
+            </span>
+          </div>
+          <p class="hint">Applies to the preview and every download. MP4 has no transparency, so it uses white.</p>
+        </details>
         <details id="svg-details">
           <summary>SVG code of this frame</summary>
           <pre id="svg-code" class="code"></pre>

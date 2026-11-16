@@ -23,7 +23,12 @@ export function formatTrace({ scene, timeline, log, stageCommands }, { fps = 25 
 
   lines.push(`[stage]     ${count(stageCmds, 'node')} nodes, ${count(stageCmds, 'edge')} edges (from stage.lua)`);
   lines.push(`[commands]`);
-  for (const c of cmds) lines.push(`  t=${sec(c.t)}  ${describe(c, scene)}`);
+  const what = cmds.map((c) => describe(c, scene));
+  const width = Math.max(0, ...what.map((w) => w.length));
+  cmds.forEach((c, i) => {
+    const src = c.src ? `  ${c.src.file}:${c.src.line}` : '';
+    lines.push(`  t=${sec(c.t)}  ${src ? what[i].padEnd(width) : what[i]}${src}`.trimEnd());
+  });
   for (const l of log) lines.push(`[print]     ${l}`);
 
   const creates = cmds.filter((c) => c.op === 'create').length;

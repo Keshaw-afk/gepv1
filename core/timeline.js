@@ -5,6 +5,7 @@
 //   { op: 'create', id, kind: 'node', props: { label, pos: {x, y}, color }, t, dur: 0 }
 //   { op: 'create', id, kind: 'edge', props: { a, b, color }, t, dur: 0 }
 //   { op: 'set', id, prop: 'color' | 'pos', value, t, dur }
+// Commands made by Lua also carry src: { file, line } (or null).
 
 export const toMs = (seconds) => Math.round(seconds * 1000);
 

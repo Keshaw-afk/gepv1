@@ -19,5 +19,14 @@ test('moving a node also moves the ends of its edges', () => {
 test('objects created later stay hidden until then', () => {
   const { timeline } = run('', 'wait(2); node("P", 5, 5)');
   const svg = renderAnimatedSVG(timeline);
-  assert.match(svg, /<circle [^>]*visibility="hidden">\s*<set attributeName="visibility" to="visible" begin="2s"/);
+  assert.match(svg, /<g id="P" class="node" visibility="hidden">\s*<set attributeName="visibility" to="visible" begin="2s"/);
+});
+
+test('the animated SVG uses the same ids, classes and style as a still frame', () => {
+  const { timeline } = run('A = node("A", 0, 0); B = node("B", 100, 0); edge(A, B)', 'color(A, "red")');
+  const svg = renderAnimatedSVG(timeline, { background: 'transparent', font: 'serif' });
+  assert.match(svg, /<line id="A-B" class="edge"/);
+  assert.match(svg, /<g id="A" class="node">/);
+  assert.match(svg, /\.node text \{ font-family: serif;/);
+  assert.doesNotMatch(svg, /<rect/);
 });

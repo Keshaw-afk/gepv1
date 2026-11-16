@@ -1,15 +1,18 @@
-// Page wiring: 1 Stage (editor) -> 2 Behaviour (steps + code) -> 3 Result (preview + downloads).
+// Page wiring: 1 Stage (editor) -> 2 Behaviour (steps + code) -> 3 Result (frames, moments, downloads).
 // Everything the GUI makes is turned into Lua (stage.lua, steps.lua) and run by the same engine
 // as hand-written code (script.lua).
 
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
-import { stepsToLua, pruneSteps, toEditorIds } from '../core/steps.js';
-import { sceneAt } from '../core/player.js';
+import { buildSteps, stepsToLua, pruneSteps, toEditorIds } from '../core/steps.js';
+import { sceneAt, frameTimes } from '../core/player.js';
 import { renderSVG, paint } from '../core/svg.js';
 import { renderAnimatedSVG } from '../core/animated_svg.js';
 import { formatTrace } from '../core/trace.js';
+import { outputSettings } from '../core/output.js';
+import { frameAt, landmarks, renderFrame, frameName } from '../core/frames.js';
 import { Editor } from './editor.js';
+import { CodeView } from './codeview.js';
 
 const fengari = window.fengari;
 const $ = (id) => document.getElementById(id);
@@ -17,6 +20,7 @@ const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 
 const HINTS = {
   stage: 'Click empty space: add a node · Drag: move · Shift-drag or right-drag from node to node: connect · Double-click: rename · Delete key: remove',
   behaviour: 'Showing the picture after your steps. Click a node or line, then pick a colour · Drag a node to record a move',
+  result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
 let tab = 'stage';
@@ -36,14 +40,23 @@ function download(blob, name) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+const saveText = (text, name) => download(new Blob([text], { type: name.endsWith('.svg') ? 'image/svg+xml' : 'text/plain' }), name);
 
-const program = () => ({ stage: toStageLua(editor.scene), steps: stepsToLua(steps, editor.scene), script: scriptBox.value });
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+const stageView = new CodeView($('stage-code'), { lang: 'lua', filename: 'stage.lua', onSave: saveText });
+const stepsView = new CodeView($('steps-code'), { lang: 'lua', filename: 'steps.lua', onSave: saveText });
 
 // ---------- 1. Stage ----------
 const labelInput = $('label');
 const editor = new Editor($('editor'), {
   onChange: () => {
-    $('stage-code').textContent = toStageLua(editor.scene);
+    stageView.set(toStageLua(editor.scene));
     steps = pruneSteps(steps, editor.scene); // a deleted node takes its steps with it
     renderSteps();
   },
@@ -74,7 +87,7 @@ function loadStage(text) {
   }
 }
 
-const saveStage = () => download(new Blob([toStageLua(editor.scene)], { type: 'text/plain' }), 'stage.lua');
+const saveStage = () => saveText(toStageLua(editor.scene), 'stage.lua');
 $('save').addEventListener('click', saveStage);
 $('load').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async () => {
@@ -83,14 +96,6 @@ $('file').addEventListener('change', async () => {
   $('file').value = '';
 });
 $('clear').addEventListener('click', () => loadStage(''));
-
-window.addEventListener('keydown', (e) => {
-  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveStage(); }
-  else if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); $('file').click(); }
-  else if (!typing && tab === 'stage' && (e.key === 'Delete' || e.key === 'Backspace')) editor.deleteSelected();
-  else if (!typing && e.key === 'Escape') editor.select(null);
-});
 
 // ---------- 2. Behaviour: steps ----------
 for (const c of PALETTE) {
@@ -133,25 +138,25 @@ function behaviourView() {
   }
 }
 
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
+/** "A colour → ● red" / "B move → (50, 60)" / "p1 appears", for the steps list and the moments list. */
+function describeChange(name, c) {
+  const what = el('span', 'what');
+  what.append(el('b', null, name), ' ');
+  if (c.op === 'color') {
+    const sw = el('i', 'dot');
+    sw.style.background = paint(c.color);
+    what.append('colour → ', sw, ` ${c.color}`);
+  } else if (c.op === 'move') {
+    what.append(`move → (${Math.round(c.x)}, ${Math.round(c.y)})`);
+  } else {
+    what.append('appears');
+  }
+  return what;
 }
 
 function describe(s) {
-  const what = el('span', 'what');
-  if (s.op === 'wait') { what.append(el('b', null, 'Pause')); return what; }
-  what.append(el('b', null, editor.scene.nameOf(s.target)), ' ');
-  if (s.op === 'color') {
-    const sw = el('i', 'dot');
-    sw.style.background = paint(s.color);
-    what.append('colour → ', sw, ` ${s.color}`);
-  } else {
-    what.append(`move → (${s.x}, ${s.y})`);
-  }
-  return what;
+  if (s.op === 'wait') { const w = el('span', 'what'); w.append(el('b', null, 'Pause')); return w; }
+  return describeChange(editor.scene.nameOf(s.target), s);
 }
 
 function renderSteps() {
@@ -194,7 +199,7 @@ function renderSteps() {
     list.append(li);
   });
   $('steps-empty').hidden = steps.length > 0;
-  $('steps-code').textContent = stepsToLua(steps, editor.scene) || '-- no steps yet';
+  stepsView.set(stepsToLua(steps, editor.scene) || '-- no steps yet');
   updateRunOrder();
 }
 
@@ -209,6 +214,7 @@ scriptBox.addEventListener('input', updateRunOrder);
 const clearCode = () => { scriptBox.value = ''; updateRunOrder(); };
 $('clear-code').addEventListener('click', clearCode);
 $('clear-code-note').addEventListener('click', clearCode);
+$('save-code').addEventListener('click', () => saveText(scriptBox.value, 'script.lua'));
 $('example').addEventListener('change', async () => {
   const name = $('example').value;
   $('example').value = '';
@@ -237,64 +243,196 @@ for (const b of document.querySelectorAll('[data-sub]')) {
   });
 }
 
-// ---------- 3. Result: run, preview, downloads ----------
-const player = { timeline: null, t: 0, playing: false, last: 0 };
-let lastProgram = null;
+// ---------- 3. Result: frames, moments, downloads ----------
+// The player works in frames: frame i is at times[i], the same grid as the MP4 and `--frames`.
+const player = { result: null, times: [0], marks: [], frame: 0, playing: false, startT: 0, startNow: 0 };
+let output = outputSettings();
+let lastProgram = null, lastKey = null, stepAtLine = [];
+const svgView = new CodeView($('svg-code'), { lang: 'xml', filename: () => frameName(player.frame), onSave: saveText });
+const traceView = new CodeView($('trace'), { lang: 'text', filename: 'trace.txt', onSave: saveText });
 
+/** Runs the program. Returns 'changed', 'same' (nothing changed since the last run) or null on error. */
 function run() {
   try {
-    lastProgram = program();
-    const result = runProgram(fengari, lastProgram);
+    const built = buildSteps(steps, editor.scene);
+    const prog = { stage: toStageLua(editor.scene), steps: built.code, script: scriptBox.value };
+    const key = JSON.stringify(prog);
+    if (key === lastKey && player.result) { showError(null); return 'same'; }
+    const result = runProgram(fengari, prog);
     showError(null);
-    $('trace').textContent = formatTrace(result).join('\n');
-    player.timeline = result.timeline;
-    player.t = 0;
-    $('scrub').max = result.timeline.durationMs;
+    Object.assign(player, { result, playing: false });
+    lastProgram = prog;
+    lastKey = key;
+    stepAtLine = built.stepAtLine;
+    retime(0);
     $('export-status').textContent = '';
-    return true;
+    return 'changed';
   } catch (e) {
     showError(e.message);
-    return false;
+    return null;
   }
 }
 
-function drawPreview() {
-  if (!player.timeline) return;
-  const svg = renderSVG(sceneAt(player.timeline, player.t));
-  $('preview').innerHTML = svg;
-  if ($('svg-details').open) $('svg-code').textContent = svg;
-  $('scrub').value = player.t;
-  $('time').textContent = `${(player.t / 1000).toFixed(2)} / ${(player.timeline.durationMs / 1000).toFixed(2)} s`;
+/** Rebuilds the frame grid (after a run or a frame-rate change) and stays near time tMs. */
+function retime(tMs) {
+  const { timeline } = player.result;
+  player.times = frameTimes(timeline.durationMs, output.fps);
+  player.marks = landmarks(timeline, player.times);
+  player.frame = frameAt(player.times, tMs);
+  const last = player.times.length - 1;
+  $('scrub').max = last;
+  $('frame').max = last;
+  $('last-frame').textContent = last;
+  traceView.set(formatTrace(player.result, { fps: output.fps }).join('\n'));
+  renderMoments();
+}
+
+const lastFrame = () => player.times.length - 1;
+const timeline = () => player.result.timeline;
+
+function draw() {
+  if (!player.result) return;
+  const { times, frame } = player;
+  $('preview').innerHTML = renderSVG(sceneAt(timeline(), times[frame]), { output });
+  if ($('svg-details').open) svgView.set(renderFrame(timeline(), times, frame, output));
+  $('scrub').value = frame;
+  $('scrub').style.setProperty('--p', `${lastFrame() ? (frame / lastFrame()) * 100 : 0}%`);
+  if (document.activeElement !== $('frame')) $('frame').value = frame;
+  $('time').textContent = `${(times[frame] / 1000).toFixed(2)} s`;
   $('play').textContent = player.playing ? 'Pause' : 'Play';
+  highlightMoment();
+}
+
+function go(frame) {
+  player.playing = false;
+  player.frame = Math.min(lastFrame(), Math.max(0, Math.round(frame) || 0));
+  draw();
 }
 
 function tick(now) {
   if (!player.playing) return;
-  player.t = Math.min(player.timeline.durationMs, player.t + (now - player.last));
-  player.last = now;
-  if (player.t >= player.timeline.durationMs) player.playing = false;
-  drawPreview();
+  const t = player.startT + Math.max(0, now - player.startNow);
+  const f = Math.min(lastFrame(), frameAt(player.times, t));
+  const changed = f !== player.frame;
+  player.frame = f;
+  if (f >= lastFrame()) player.playing = false;
+  if (changed || !player.playing) draw();
   if (player.playing) requestAnimationFrame(tick);
 }
 
 function play() {
-  if (player.t >= player.timeline.durationMs) player.t = 0;
+  if (player.frame >= lastFrame()) player.frame = 0;
   player.playing = true;
-  player.last = performance.now();
+  player.startT = player.times[player.frame];
+  player.startNow = performance.now();
   requestAnimationFrame(tick);
+  draw();
+}
+const togglePlay = () => (player.playing ? go(player.frame) : play());
+
+$('play').addEventListener('click', togglePlay);
+$('prev').addEventListener('click', () => go(player.frame - 1));
+$('next').addEventListener('click', () => go(player.frame + 1));
+$('scrub').addEventListener('input', () => go(Number($('scrub').value)));
+$('frame').addEventListener('change', () => { go(Number($('frame').value)); $('frame').value = player.frame; });
+$('frame').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('frame').blur(); }); // then ← → work again
+$('svg-details').addEventListener('toggle', draw);
+
+// Moments: frames where a change has just finished (core/frames.js landmarks).
+function sourceLabel(src) {
+  if (!src) return '';
+  if (src.file === 'steps.lua' && stepAtLine[src.line] !== undefined) return `Step ${stepAtLine[src.line] + 1}`;
+  return `${src.file}:${src.line}`;
 }
 
-$('play').addEventListener('click', () => { if (player.playing) player.playing = false; else play(); drawPreview(); });
-$('scrub').addEventListener('input', () => { player.playing = false; player.t = Number($('scrub').value); drawPreview(); });
-$('svg-details').addEventListener('toggle', drawPreview);
+function changeOf(c) {
+  if (c.op === 'create') return { op: 'create' };
+  return c.prop === 'color' ? { op: 'color', color: c.value } : { op: 'move', x: c.value.x, y: c.value.y };
+}
+
+function renderMoments() {
+  const list = $('moments'), ticks = $('ticks');
+  list.replaceChildren();
+  ticks.replaceChildren();
+  const last = lastFrame();
+  for (const m of player.marks) {
+    const b = el('button');
+    b.type = 'button';
+    b.append(el('span', 't', `${(m.t / 1000).toFixed(2)} s`));
+    const changes = el('span', 'changes');
+    m.cmds.forEach((c, i) => {
+      if (i) changes.append(', ');
+      changes.append(describeChange(player.result.scene.nameOf(c.id), changeOf(c)));
+    });
+    b.append(changes, el('span', 'src', [...new Set(m.cmds.map((c) => sourceLabel(c.src)))].filter(Boolean).join(', ')));
+    b.title = `Frame ${m.frame}`;
+    b.addEventListener('click', () => go(m.frame));
+    const li = el('li');
+    li.dataset.frame = m.frame;
+    li.append(b);
+    list.append(li);
+
+    const tick = el('span');
+    tick.style.setProperty('--f', last ? m.frame / last : 0);
+    ticks.append(tick);
+  }
+  $('moments-count').textContent = player.marks.length || '';
+  $('moments-empty').hidden = player.marks.length > 0;
+}
+
+function currentMoment() {
+  let cur = -1;
+  player.marks.forEach((m, i) => { if (m.frame <= player.frame) cur = i; });
+  return cur;
+}
+
+function highlightMoment() {
+  const cur = currentMoment();
+  const list = $('moments');
+  [...list.children].forEach((li, i) => {
+    const on = i === cur;
+    li.classList.toggle('current', on);
+    if (on) li.setAttribute('aria-current', 'true'); else li.removeAttribute('aria-current');
+    // keep the current moment visible inside the list without scrolling the page
+    if (on && $('moments-details').open) {
+      if (li.offsetTop < list.scrollTop) list.scrollTop = li.offsetTop;
+      else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight;
+    }
+  });
+}
+
+function jumpMoment(dir) {
+  const { marks, frame } = player;
+  const m = dir > 0 ? marks.find((x) => x.frame > frame) : marks.findLast((x) => x.frame < frame);
+  go(m ? m.frame : dir > 0 ? lastFrame() : 0);
+}
+
+// Output settings: size, frame rate, font, background. They apply to the preview and every download.
+function readOutput() {
+  const transparent = $('out-transparent').checked;
+  output = outputSettings({
+    scale: $('out-scale').value, fps: $('out-fps').value, font: $('out-font').value,
+    background: transparent ? 'transparent' : $('out-bg').value,
+  });
+  $('out-bg').disabled = transparent;
+  $('preview').classList.toggle('transparent', transparent);
+  $('output-summary').textContent = `${640 * output.scale} × ${360 * output.scale} · ${output.fps} fps · ${output.font} · ${transparent ? 'transparent' : output.background}`;
+}
+for (const id of ['out-scale', 'out-fps', 'out-font', 'out-bg', 'out-transparent']) {
+  $(id).addEventListener('input', () => {
+    const fps = output.fps;
+    readOutput();
+    if (!player.result) return;
+    if (output.fps !== fps) retime(player.times[player.frame]); // stay at the same moment on the new grid
+    draw();
+  });
+}
+readOutput();
 
 $('dl-frame').addEventListener('click', () => {
-  const svg = renderSVG(sceneAt(player.timeline, player.t));
-  download(new Blob([svg], { type: 'image/svg+xml' }), `frame_${Math.round(player.t)}ms.svg`);
+  saveText(renderFrame(timeline(), player.times, player.frame, output), frameName(player.frame));
 });
-$('dl-svg').addEventListener('click', () => {
-  download(new Blob([renderAnimatedSVG(player.timeline)], { type: 'image/svg+xml' }), 'gepv1.svg');
-});
+$('dl-svg').addEventListener('click', () => saveText(renderAnimatedSVG(timeline(), output), 'gepv1.svg'));
 $('dl-mp4').addEventListener('click', async () => {
   const status = $('export-status');
   $('dl-mp4').disabled = true;
@@ -303,7 +441,7 @@ $('dl-mp4').addEventListener('click', async () => {
     const res = await fetch('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(lastProgram),
+      body: JSON.stringify({ ...lastProgram, output }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
     download(await res.blob(), 'gepv1.mp4');
@@ -315,9 +453,34 @@ $('dl-mp4').addEventListener('click', async () => {
   }
 });
 
+// ---------- Keyboard ----------
+window.addEventListener('keydown', (e) => {
+  const active = document.activeElement;
+  const typing = active?.matches('textarea, select, input:not([type=range]):not([type=checkbox]):not([type=color])');
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveStage(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); $('file').click(); return; }
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (tab === 'result' && player.result) {
+    const keys = {
+      ArrowLeft: () => go(player.frame - (e.shiftKey ? 10 : 1)),
+      ArrowRight: () => go(player.frame + (e.shiftKey ? 10 : 1)),
+      Home: () => go(0),
+      End: () => go(lastFrame()),
+      '[': () => jumpMoment(-1),
+      ']': () => jumpMoment(1),
+      ' ': () => (active?.matches('button, summary, input:not([type=range]), select, textarea') ? false : togglePlay()),
+    };
+    if (keys[e.key] && keys[e.key]() !== false) e.preventDefault();
+    return;
+  }
+  if (tab === 'stage' && (e.key === 'Delete' || e.key === 'Backspace')) editor.deleteSelected();
+  else if (e.key === 'Escape') editor.select(null);
+});
+
 // ---------- Tabs ----------
-function showTab(next) {
-  if (next === 'result' && !run()) return; // stay put and show the error
+function showTab(next, { replay = false } = {}) {
+  let ran = null;
+  if (next === 'result' && !(ran = run())) return; // stay put and show the error
   if (tab === 'result') player.playing = false;
   tab = next;
   for (const b of document.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
@@ -328,20 +491,21 @@ function showTab(next) {
   $('preview').hidden = editing;
   $('player').hidden = editing;
   $('canvas-hint').textContent = HINTS[tab] ?? '';
-  $('canvas-hint').hidden = !editing;
 
   if (editing) {
     editor.select(null);
     editor.setMode(tab, tab === 'behaviour' ? behaviourView() : null);
+  } else if (ran === 'changed' || replay) {
+    player.frame = 0;
+    play(); // Run, or a new or changed program: play from the start
   } else {
-    play();
-    drawPreview();
+    draw(); // nothing changed: stay on the same frame
   }
 }
 
 for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('click', () => showTab(b.dataset.tab));
 for (const b of document.querySelectorAll('[data-goto]')) b.addEventListener('click', () => showTab(b.dataset.goto));
-$('run').addEventListener('click', () => showTab('result'));
+$('run').addEventListener('click', () => showTab('result', { replay: true }));
 
 // ---------- Start with the example graph, no steps and no code ----------
 loadStage(await fetch('/examples/stage.lua').then((r) => r.text()));

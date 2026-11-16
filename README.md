@@ -24,9 +24,15 @@ The page has three tabs: **Stage → Behaviour → Result**.
      `steps.lua` is shown underneath.
    - **Code** for loops and algorithms (starts empty; DFS, BFS and others are under **Load example…**).
    Run plays stage → steps → code.
-3. **Result:** preview, scrub, and download an **MP4 video**, an **animated SVG** (one file that plays
-   in any browser), or **this frame** as a still SVG. The SVG code of the current frame and the
-   pipeline trace are in the collapsible sections.
+3. **Result:** works in **frames**, the same frames as the MP4. Step with ‹ › or ←/→ (Shift: 10),
+   type a frame number, or jump between **Moments**: the frames where a change has just finished,
+   with the step or Lua line that made it (`[` `]`). Download an **MP4 video**, an **animated SVG**
+   (one file that plays in any browser) or **this frame** as `frame_00043.svg`. **Output** sets the
+   size, frame rate, font and background (transparent for SVG). The SVG code of the current frame
+   and the pipeline trace are in collapsible sections with Copy, Save and Wrap.
+
+Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a class (`node`,
+`edge`), and shared styling is one `<style>` block.
 
 ## CLI
 
@@ -35,8 +41,9 @@ npm run demo
 # = node node/cli.js examples/stage.lua examples/dfs.lua --trace --video out/dfs.mp4
 ```
 
-Options: `--trace`, `--frames DIR` (one SVG per frame), `--video OUT.mp4`, `--svg OUT.svg`
-(animated SVG), `--fps N` (default 25).
+Options: `--trace`, `--frame N OUT.svg` (one frame), `--frames DIR` (every frame), `--video OUT.mp4`,
+`--svg OUT.svg` (animated SVG), `--fps N` (default 25), `--scale 1|2|3`, `--background C|transparent`,
+`--font sans-serif|serif|monospace`.
 
 ## Tests
 

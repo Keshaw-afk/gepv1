@@ -32,9 +32,10 @@ test('objects only exist after their create command', () => {
   assert.equal(sceneAt(timeline, 1000).nodes.length, 1);
 });
 
-test('frameTimes covers the whole duration', () => {
-  assert.deepEqual(frameTimes(100, 25), [0, 40, 80]);
-  assert.equal(frameTimes(4300, 25).length, 108);
+test('frameTimes is a regular grid that reaches the end', () => {
+  assert.deepEqual(frameTimes(100, 25), [0, 40, 80, 120]); // the last frame is at or after the end
+  assert.deepEqual(frameTimes(80, 25), [0, 40, 80]);
+  assert.equal(frameTimes(4300, 25).length, 109);
 });
 
 test('rendered colours use the engine palette, so a finished tween matches its last blended frame', async () => {

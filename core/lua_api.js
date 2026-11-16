@@ -1,5 +1,6 @@
 // Lua API: runs stage.lua + steps.lua + script.lua in an embedded Lua VM (Fengari) and turns every
-// API call into a command on the timeline. Nothing is drawn here (record, then play).
+// API call into a command on the timeline, tagged with the file and line that made it
+// (cmd.src = { file: 'script.lua', line: 6 }). Nothing is drawn here (record, then play).
 //
 // `fengari` is passed in so the same module works in Node (npm package) and in the
 // browser (window.fengari from fengari-web).
@@ -55,9 +56,16 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     if (!o || (kind && o.kind !== kind)) fail(`argument #${i}: no ${kind ?? 'object'} with id ${id}`);
     return id;
   };
+  // Where the current API call came from, e.g. { file: 'steps.lua', line: 3 } (level 1 = the caller).
+  const ar = new lua.lua_Debug();
+  const caller = () => {
+    if (!lua.lua_getstack(L, 1, ar)) return null;
+    lua.lua_getinfo(L, to_luastring('Sl'), ar);
+    return ar.currentline > 0 ? { file: to_jsstring(ar.short_src), line: ar.currentline } : null;
+  };
   const emit = (cmd) => {
     if (timeline.commands.length >= MAX_COMMANDS) fail(`too many commands (limit ${MAX_COMMANDS})`);
-    return timeline.add(cmd);
+    return timeline.add({ ...cmd, src: caller() });
   };
 
   const api = {

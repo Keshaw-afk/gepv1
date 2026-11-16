@@ -10,7 +10,7 @@ test('DFS example: command count, duration, frame count and visit order', () => 
   assert.equal(r.stageCommands, 7);
   assert.equal(cmds.length, 18);
   assert.equal(r.timeline.durationMs, 4300);
-  assert.equal(frameTimes(r.timeline.durationMs, 25).length, 108);
+  assert.equal(frameTimes(r.timeline.durationMs, 25).length, 109); // the last frame (4.32 s) shows the finished search
   const visits = cmds.filter((c) => c.op === 'set' && c.value === 'red' && r.scene.get(c.id).kind === 'node');
   assert.deepEqual(visits.map((c) => r.scene.nameOf(c.id)), ['A', 'B', 'D', 'C']);
   assert.deepEqual(visits.map((c) => c.t), [0, 800, 1600, 3000]);

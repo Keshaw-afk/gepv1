@@ -8,11 +8,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fengari from 'fengari';
 import { runProgram, ScriptError } from '../core/lua_api.js';
+import { outputSettings, forVideo } from '../core/output.js';
 import { writeFrames, encodeVideo } from './export.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8080;
-const FPS = 25;
 const MAX_BODY = 1_000_000;
 const MAX_VIDEO_MS = 120_000;
 
@@ -49,13 +49,15 @@ async function readBody(req) {
 async function handleExport(req, res) {
   let dir;
   try {
-    const { stage = '', steps = '', script = '' } = JSON.parse(await readBody(req));
+    const { stage = '', steps = '', script = '', output: o } = JSON.parse(await readBody(req));
+    let output;
+    try { output = forVideo(outputSettings(o)); } catch (e) { throw Object.assign(e, { status: 400 }); }
     const { timeline } = runProgram(fengari, { stage: String(stage), steps: String(steps), script: String(script) });
     if (timeline.durationMs > MAX_VIDEO_MS) throw Object.assign(new Error(`animation longer than ${MAX_VIDEO_MS / 1000} s`), { status: 400 });
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'gepv1-'));
-    await writeFrames(timeline, dir, FPS);
+    await writeFrames(timeline, dir, output);
     const out = path.join(dir, 'out.mp4');
-    await encodeVideo(dir, out, FPS);
+    await encodeVideo(dir, out, output.fps);
     const mp4 = await fs.readFile(out);
     res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': mp4.length });
     res.end(mp4);

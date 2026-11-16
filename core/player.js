@@ -58,9 +58,12 @@ export function tweens(timeline) {
   return list;
 }
 
-/** Frame timestamps (ms) covering [0, duration] at the given fps. */
+/**
+ * Frame timestamps (ms) on a regular 1/fps grid: frame i is at round(i * 1000 / fps).
+ * The last frame is at or after the end, so the finished state is always a frame.
+ */
 export function frameTimes(durationMs, fps) {
-  const n = Math.floor((durationMs * fps) / 1000) + 1;
+  const n = Math.ceil((durationMs * fps) / 1000) + 1;
   return Array.from({ length: n }, (_, i) => Math.round((i * 1000) / fps));
 }
 

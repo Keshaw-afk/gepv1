@@ -9,14 +9,14 @@
 //                    touching the node
 //   create at t>0 -> hidden until t (<set attributeName="visibility">)
 // When two animations overlap, the one that starts later wins, which matches the player.
+// Ids, classes and <style> are the same as a still frame's (export flavour in svg.js).
 
-import { CANVAS, NODE_RADIUS } from './scene.js';
+import { NODE_RADIUS } from './scene.js';
 import { tweens } from './player.js';
 import { contrastText, mixColor } from './colors.js';
-import { paint } from './svg.js';
+import { DEFAULT_OUTPUT } from './output.js';
+import { paint, esc, n, svgIds, svgOpen, styleBlock, backgroundRect } from './svg.js';
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
-const n = (v) => Math.round(v * 100) / 100;
 const s = (ms) => `${ms / 1000}s`; // times are whole ms
 
 const set = (attr, to, t) => `<set attributeName="${attr}" to="${to}" begin="${s(t)}" fill="freeze"/>`;
@@ -36,11 +36,12 @@ function contrastFlip(tw) {
   return tw.t0 + tw.dur;
 }
 
-export function renderAnimatedSVG(timeline) {
-  const { width, height } = CANVAS;
+export function renderAnimatedSVG(timeline, output = {}) {
+  const o = { ...DEFAULT_OUTPUT, ...output };
   const creates = timeline.commands.filter((c) => c.op === 'create');
   const nodes = creates.filter((c) => c.kind === 'node');
   const edges = creates.filter((c) => c.kind === 'edge');
+  const ids = svgIds(nodes.map((c) => ({ id: c.id, label: c.props.label })), edges.map((c) => ({ id: c.id, a: c.props.a, b: c.props.b })));
 
   // Child animation elements for every SVG element we draw.
   const kids = { circle: new Map(), text: new Map(), line: new Map() };
@@ -53,7 +54,7 @@ export function renderAnimatedSVG(timeline) {
       add(isNode ? 'circle' : 'line', tw.id, animate(isNode ? 'fill' : 'stroke', paint(tw.from), paint(tw.to), tw.t0, tw.dur));
       const flip = isNode ? contrastFlip(tw) : null;
       // skip the flip if a later colour change on this node starts first (it decides the text)
-      const overtaken = all.slice(i + 1).some((o) => o.id === tw.id && o.prop === 'color' && o.t0 < flip);
+      const overtaken = all.slice(i + 1).some((x) => x.id === tw.id && x.prop === 'color' && x.t0 < flip);
       if (flip !== null && !overtaken) add('text', tw.id, set('fill', contrastText(tw.to), flip));
     } else if (tw.prop === 'pos') {
       const { from: f, to } = tw;
@@ -75,23 +76,31 @@ export function renderAnimatedSVG(timeline) {
   // Objects created after t=0 stay hidden until their create time.
   const appear = (c) => (c.t > 0 ? [set('visibility', 'visible', c.t)] : []);
   const hidden = (c) => (c.t > 0 ? ' visibility="hidden"' : '');
-  const body = (list) /* no whitespace inside <text>, so it's only used for circle/line */ => (list.length ? `\n  ${list.join('\n  ')}\n` : '');
+  // An element with animation children; pad = its indentation. (Never used for <text>: whitespace
+  // inside <text> would be drawn.)
+  const el = (open, close, list, pad) => (list.length
+    ? [`${pad}${open}>`, ...list.map((k) => `${pad}  ${k}`), `${pad}</${close}>`]
+    : [`${pad}${open}/>`]);
   const start = new Map(nodes.map((c) => [c.id, c.props.pos]));
 
-  const out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`);
-  out.push(`<!-- GEPV1 animated SVG: ${s(timeline.durationMs)} long, plays once (reload to replay) -->`);
-  out.push(`<rect width="${width}" height="${height}" fill="#ffffff"/>`);
+  const out = [svgOpen(o)];
+  const body = [
+    `<!-- GEPV1 animated SVG: ${s(timeline.durationMs)} long, plays once (reload to replay) -->`,
+    ...styleBlock(o),
+    ...backgroundRect(o, true),
+  ];
   for (const e of edges) {
     const a = start.get(e.props.a), b = start.get(e.props.b);
-    const kidList = [...appear(e), ...(kids.line.get(e.id) ?? [])];
-    out.push(`<line x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${paint(e.props.color)}" stroke-width="3" stroke-linecap="round"${hidden(e)}>${body(kidList)}</line>`);
+    const open = `<line id="${esc(ids.get(e.id))}" class="edge" x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${paint(e.props.color)}"${hidden(e)}`;
+    body.push(...el(open, 'line', [...appear(e), ...(kids.line.get(e.id) ?? [])], ''));
   }
   for (const c of nodes) {
     const { x, y } = c.props.pos;
-    out.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${NODE_RADIUS}" fill="${paint(c.props.color)}" stroke="#333333" stroke-width="2"${hidden(c)}>${body([...appear(c), ...(kids.circle.get(c.id) ?? [])])}</circle>`);
-    out.push(`<text x="${n(x)}" y="${n(y + 6)}" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="bold" fill="${contrastText(c.props.color)}"${hidden(c)}>${esc(c.props.label)}${[...appear(c), ...(kids.text.get(c.id) ?? [])].join('')}</text>`);
+    body.push(`<g id="${esc(ids.get(c.id))}" class="node"${hidden(c)}>`, ...appear(c).map((k) => `  ${k}`));
+    body.push(...el(`<circle cx="${n(x)}" cy="${n(y)}" r="${NODE_RADIUS}" fill="${paint(c.props.color)}"`, 'circle', kids.circle.get(c.id) ?? [], '  '));
+    body.push(`  <text x="${n(x)}" y="${n(y + 6)}" fill="${contrastText(c.props.color)}">${esc(c.props.label)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
+    body.push('</g>');
   }
-  out.push('</svg>');
-  return out.join('\n');
+  out.push(...body.map((l) => '  ' + l), '</svg>');
+  return out.join('\n') + '\n';
 }

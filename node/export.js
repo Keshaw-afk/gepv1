@@ -3,20 +3,19 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { sceneAt, frameTimes } from '../core/player.js';
-import { renderSVG } from '../core/svg.js';
+import { frameTimes } from '../core/player.js';
+import { renderFrame, frameName } from '../core/frames.js';
 
 export function hasFfmpeg() {
   return spawnSync('ffmpeg', ['-hide_banner', '-decoders'], { encoding: 'utf8' }).stdout?.includes('librsvg') ?? false;
 }
 
-/** Writes frame_00000.svg, frame_00001.svg, ... into dir. Returns the frame count. */
-export async function writeFrames(timeline, dir, fps) {
+/** Writes frame_00000.svg, frame_00001.svg, ... into dir (exported SVG, see svg.js). Returns the frame count. */
+export async function writeFrames(timeline, dir, output) {
   await fs.mkdir(dir, { recursive: true });
-  const times = frameTimes(timeline.durationMs, fps);
-  for (const [i, t] of times.entries()) {
-    const file = path.join(dir, `frame_${String(i).padStart(5, '0')}.svg`);
-    await fs.writeFile(file, renderSVG(sceneAt(timeline, t)));
+  const times = frameTimes(timeline.durationMs, output.fps);
+  for (let i = 0; i < times.length; i++) {
+    await fs.writeFile(path.join(dir, frameName(i)), renderFrame(timeline, times, i, output));
   }
   return times.length;
 }
