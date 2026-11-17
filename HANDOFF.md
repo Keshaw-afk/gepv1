@@ -1,14 +1,16 @@
 # Handoff notes
 
 For whoever works on GEPV1 next (person or AI). Read this, then [ARCHITECTURE.md](ARCHITECTURE.md)
-for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-16.
+for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17.
 
 ---
 
 ## 1. Where things stand
 
-- Last release: **v1.0.0** (tagged, pushed to the private GitHub repo `gepv1`).
-- Since then, **local commits only** (not pushed, not tagged, `package.json` still says 1.0.0):
+- Current release: **v1.1.0** (2026-11-17, tagged and pushed to the private GitHub repo `gepv1`).
+  It is v1.0.0 plus shapes and motion. Chosen as a minor bump: every v1.0.0 Lua script still runs;
+  the exported SVG *code* changed (`cx`/`cy` → `translate()`, arrows are `<polyline>` with a marker,
+  see §3) but the pictures are the same, and nothing was parsing the SVG yet.
 
   | Commit | What |
   |--------|------|
@@ -19,12 +21,11 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-16
   | `21003ca` | Motion by rules: `push`, `simulate`, Push tool, Let it move |
   | `5fc1b24` | Rules can't change things; Let it move defaults to 2 s |
   | `512aac0` | Verification tools in `tools/`, these notes, `CLAUDE.md` |
-  | (latest) | A push from the GUI brings its own Let it move (a push alone didn't move anything) |
+  | `9113a03` | A push from the GUI brings its own Let it move (a push alone didn't move anything) |
+  | `109b185` | Push: the drag is where the object lands, not a speed |
 
-- **Not decided yet: the next version number.** Ask the user which bump; don't pick one. Points to
-  raise: the exported SVG format changed (`cx`/`cy` → `translate()`, arrows are `<polyline>`
-  with a marker; see §3), and the API grew a lot. Release with `npm version <x.y.z>`, then push the
-  tag, **only when the user asks**.
+- Next release: ask the user which bump (semver: MAJOR breaks old scripts/output, MINOR adds,
+  PATCH fixes); release with `npm version <x.y.z>` and push with `--follow-tags`, **only when asked**.
 - `npm test`: 51 tests, all passing.
 
 ## 2. What was added in this round (shapes and motion)
