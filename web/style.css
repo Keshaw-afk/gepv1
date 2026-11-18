@@ -180,7 +180,7 @@ input[type=number] { width: 4.5em; }
 .swatch { transition: transform 0.12s; }
 .swatch:hover:not(:disabled) { box-shadow: 0 0 0 2px var(--accent); transform: scale(1.12); }
 
-.steps { list-style: none; margin: 8px 0; padding: 0; max-height: 300px; overflow: auto; }
+.steps { list-style: none; margin: 8px 0; padding: 0; max-height: 300px; overflow: auto; position: relative; }
 .steps li.new { animation: slide-in 0.25s ease-out; }
 .steps li {
   display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 2px 8px;
@@ -188,6 +188,15 @@ input[type=number] { width: 4.5em; }
 }
 .steps li.together { border-left: 3px solid var(--accent); padding-left: 4px; background: var(--accent-soft); }
 .steps .num { color: var(--muted); font-size: 0.8rem; text-align: right; }
+/* the list is also where you work: Start, a step (new steps go after it), or + Add steps */
+.steps li.pickable { cursor: pointer; border-radius: 6px; }
+.steps li.pickable:hover { background: var(--bg); }
+.steps li.current, .steps li.current:hover { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.steps li.start .num { color: var(--accent); }
+.steps li.marker { display: flex; gap: 8px; padding: 3px 4px; border-bottom: 2px solid var(--accent); color: var(--accent); font-size: 0.8rem; font-weight: 600; }
+.steps li.marker .num { width: 22px; color: var(--accent); }
+.steps li.add { color: var(--accent); font-size: 0.9rem; }
+.steps li.add .num { color: var(--accent); font-weight: 700; }
 .steps .what { font-size: 0.9rem; overflow-wrap: anywhere; }
 .steps .x { border: none; background: none; color: var(--muted); font-size: 1.1rem; padding: 0 6px; }
 .steps .x:hover { color: var(--error); }

@@ -111,11 +111,13 @@ export class Editor {
     this.changed();
   }
 
-  setMode(mode, view = null) {
+  /** 'stage' edits the starting picture; 'behaviour' shows `view` and turns edits into steps. The tool stays. */
+  setMode(mode, view = null, trails = []) {
     this.mode = mode;
     this.view = view;
+    this.trails = trails;
     this.drag = null;
-    this.setTool(mode === 'stage' ? 'circle' : 'select');
+    this.setSelection(this.selectedIds()); // keeps what still exists at this point
   }
 
   setView(view, trails = []) {

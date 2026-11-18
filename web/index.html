@@ -12,11 +12,9 @@
   <header>
     <h1>GEPV1</h1>
     <nav class="tabs" role="tablist">
-      <button type="button" role="tab" data-tab="stage" aria-selected="true"><span class="step">1</span> Stage</button>
+      <button type="button" role="tab" data-tab="build" aria-selected="true"><span class="step">1</span> Build</button>
       <span class="arrow" aria-hidden="true">→</span>
-      <button type="button" role="tab" data-tab="behaviour" aria-selected="false"><span class="step">2</span> Behaviour</button>
-      <span class="arrow" aria-hidden="true">→</span>
-      <button type="button" role="tab" data-tab="result" aria-selected="false"><span class="step">3</span> Result</button>
+      <button type="button" role="tab" data-tab="result" aria-selected="false"><span class="step">2</span> Result</button>
     </nav>
   </header>
 
@@ -62,70 +60,48 @@
 
     <!-- Right: the panel for the current tab -->
     <aside class="panel">
-      <div data-panel="stage">
-        <h2>Set the stage</h2>
-        <p class="hint">Draw the starting picture: shapes, text, and the lines and arrows between them. Your work is saved in this browser as you go.</p>
-        <div class="inspector">
-          <span id="selection">Nothing selected</span>
-          <span class="spacer"></span>
-          <button class="dup" type="button" disabled title="A copy of the selection, next to it (Ctrl+D)">Duplicate</button>
-          <button class="del danger" type="button" disabled title="Delete the selection (Delete)">Delete</button>
-        </div>
-        <div id="stage-palette" class="palette" aria-label="colour"></div>
-        <div class="toolbar">
-          <label>Label <input id="label" type="text" disabled autocomplete="off"></label>
-          <span class="size-fields" title="Size: 1 is normal, 2 is twice as wide or tall">Size <label>W <input class="size-w" type="number" min="0.25" max="5" step="0.05" disabled aria-label="width factor"></label> <label>H <input class="size-h" type="number" min="0.25" max="5" step="0.05" disabled aria-label="height factor"></label></span>
-        </div>
-        <div class="toolbar"><span class="arrange" data-arrange></span></div>
-        <div class="toolbar">
-          <button id="load" type="button">Load…</button>
-          <button id="save" type="button">Save</button>
-          <button id="clear" type="button" title="Remove everything from the stage">Clear</button>
-          <button id="new" type="button" title="Start again: empty stage, no steps, no code">New project</button>
-          <input id="file" type="file" accept=".lua,text/plain" hidden>
-        </div>
-        <details>
-          <summary>stage.lua (generated)</summary>
-          <pre id="stage-code" class="code"></pre>
-        </details>
-        <div class="next"><button type="button" class="primary" data-goto="behaviour">Next: Behaviour →</button></div>
-      </div>
-
-      <div data-panel="behaviour" hidden>
-        <h2>Define the behaviour</h2>
+      <div data-panel="build">
+        <h2>Build</h2>
         <div class="subtabs" role="tablist">
-          <button type="button" role="tab" data-sub="steps" aria-selected="true">Steps</button>
+          <button type="button" role="tab" data-sub="steps" aria-selected="true">Picture and steps</button>
           <button type="button" role="tab" data-sub="code" aria-selected="false">Code <span id="code-badge" class="badge"></span></button>
         </div>
 
         <div data-subpanel="steps">
-          <p id="target" class="hint">Click an object, then pick a colour. Drag to record a move. Shape tools add objects.</p>
-          <div id="palette" class="palette" aria-label="colour"></div>
-          <div class="toolbar actions">
-            <span class="size-fields" title="Size: 1 is normal, 2 is twice as wide or tall">Size <label>W <input class="size-w" type="number" min="0.25" max="5" step="0.05" disabled aria-label="width factor"></label> <label>H <input class="size-h" type="number" min="0.25" max="5" step="0.05" disabled aria-label="height factor"></label></span>
-            <span class="arrange" data-arrange></span>
-          </div>
-          <div class="toolbar actions">
-            <label id="step-label-wrap" hidden>Label <input id="step-label" type="text" autocomplete="off"></label>
+          <p id="target" class="hint"></p>
+          <div class="inspector">
+            <span id="selection">Nothing selected</span>
             <span class="spacer"></span>
-            <button class="dup" type="button" disabled title="Adds a copy of the selection (Ctrl+D)">Duplicate</button>
-            <button class="del danger" type="button" disabled title="The selection disappears at this step (Delete)">Remove</button>
+            <button class="dup" type="button" disabled title="A copy of the selection (Ctrl+D)">Duplicate</button>
+            <button class="del danger" type="button" disabled title="Delete the selection (Delete)">Delete</button>
           </div>
+          <div id="palette" class="palette" aria-label="colour"></div>
+          <div class="toolbar">
+            <label id="label-wrap">Label <input id="label" type="text" disabled autocomplete="off"></label>
+            <span class="size-fields" title="Size: 1 is normal, 2 is twice as wide or tall">Size <label>W <input class="size-w" type="number" min="0.25" max="5" step="0.05" disabled aria-label="width factor"></label> <label>H <input class="size-h" type="number" min="0.25" max="5" step="0.05" disabled aria-label="height factor"></label></span>
+          </div>
+          <div class="toolbar"><span class="arrange" data-arrange></span></div>
           <div class="toolbar">
             <label>Duration <input id="dur" type="number" min="0" max="10" step="0.1" value="0.5"> s</label>
             <button id="pause" type="button">+ Pause</button>
           </div>
+          <p id="dropped-note" class="note" hidden></p>
           <p id="code-note" class="note" hidden>
             The <b>Code</b> tab also has <span id="code-count"></span> lines. They play after these steps.
             <button id="clear-code-note" type="button">Clear code</button>
           </p>
-          <ol id="steps" class="steps"></ol>
-          <p id="steps-empty" class="hint empty">No steps yet.</p>
+          <ol id="steps" class="steps" aria-label="the start and the steps: click one to work at that point"></ol>
           <div class="toolbar">
+            <button id="load" type="button" title="Open a stage.lua">Load…</button>
+            <button id="save" type="button" title="Download the starting picture as stage.lua">Save</button>
+            <button id="clear" type="button" title="Remove everything from the starting picture">Clear picture</button>
             <button id="clear-steps" type="button">Clear steps</button>
+            <button id="new" type="button" title="Start again: empty picture, no steps, no code">New project</button>
+            <input id="file" type="file" accept=".lua,text/plain" hidden>
           </div>
           <details>
-            <summary>steps.lua (generated)</summary>
+            <summary>stage.lua and steps.lua (generated)</summary>
+            <pre id="stage-code" class="code"></pre>
             <pre id="steps-code" class="code"></pre>
           </details>
         </div>

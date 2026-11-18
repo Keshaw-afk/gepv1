@@ -14,6 +14,10 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 > Steps), align/spread (`core/arrange.js`), duplicate, copy/paste, nudge, snap-to-grid, undo/redo and
 > autosave (`web/history.js`, localStorage `gepv1.project`), New project. A step on several objects is
 > several steps with `together`.
+> **Third pass:** Stage and Behaviour are one **Build** tab (tabs: Build → Result). The steps list starts
+> with **Start**; clicking a row sets `point` (null = Start, k = after k steps) and the canvas shows that point;
+> edits at a step are spliced in there (`addSteps`, `pasteSteps`), with a note when later steps get pruned.
+> Undo/redo now also autosave (before, a reload could bring back an undone change).
 > **Second pass (user feedback):** free-hand loop lasso (straight drag = box); align/spread moves apart
 > objects that would overlap (`separate()` in arrange.js, 30 px); size is width × height `{w, h}` with
 > width/height/corner handles and W/H fields, label scales by the smaller factor; colours on the Stage

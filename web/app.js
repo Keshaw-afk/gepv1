@@ -23,13 +23,17 @@ const $ = (id) => document.getElementById(id);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
-  stage: 'Click empty space to add a shape · Draw a loop on empty space: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
-  behaviour: 'The picture after your steps · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects',
+  start: 'The starting picture · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
+  steps: 'Every change here becomes a step · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects · Ctrl+Z: undo',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
-let tab = 'stage';
+let tab = 'build';
 let steps = [];
+// Where you are working: null = the start (edits change the starting picture), or k = after the first
+// k steps (the canvas shows the picture at that point and new steps are inserted there).
+let point = null;
+const atStart = () => point === null;
 
 function showError(msg) {
   $('error').hidden = !msg;
@@ -57,7 +61,7 @@ function el(tag, cls, text) {
 const stageView = new CodeView($('stage-code'), { lang: 'lua', filename: 'stage.lua', onSave: saveText });
 const stepsView = new CodeView($('steps-code'), { lang: 'lua', filename: 'steps.lua', onSave: saveText });
 
-// ---------- 1. Stage ----------
+// ---------- Build: the picture ----------
 const labelInput = $('label');
 let history = null; // undo / redo and autosave (set up at the bottom)
 const projectChanged = () => { history?.touch(); updateHistoryButtons(); };
@@ -65,7 +69,7 @@ const projectChanged = () => { history?.touch(); updateHistoryButtons(); };
 const editor = new Editor($('editor'), {
   onChange: () => {
     stageView.set(toStageLua(editor.scene));
-    steps = pruneSteps(steps, editor.scene); // a deleted node takes its steps with it
+    prune(); // a deleted node takes its steps with it
     renderSteps();
     syncInspector();
     projectChanged();
@@ -103,9 +107,9 @@ function kindName(obj) {
   return { circle: 'Circle', rect: 'Rectangle', triangle: 'Triangle', text: 'Text' }[obj.shape ?? 'circle'];
 }
 
-// The selection controls (both panels): what is selected, its size, arrange, duplicate, delete.
-// They follow whatever is selected, on either tab.
-function syncInspector({ typing = false } = {}) {
+// The selection controls: what is selected, its colour, size, arrangement, duplicate, delete.
+// At the start they change the picture; at a later point they add steps.
+function syncInspector() {
   const sel = editor.selection();
   const nodes = sel.filter((o) => o.kind === 'node');
   const one = sel.length === 1 ? sel[0] : null;
@@ -113,7 +117,9 @@ function syncInspector({ typing = false } = {}) {
   $('selection').textContent = !sel.length ? 'Nothing selected' : !one ? `${sel.length} selected` : one.kind === 'node' ? kindName(one) : `${kindName(one)} ${name}`;
 
   const single = one?.kind === 'node';
-  labelInput.disabled = !single;
+  // a label can change at the start, or later for an object a step added
+  const renamable = single && (atStart() || typeof one.id === 'string');
+  labelInput.disabled = !renamable;
   if (document.activeElement !== labelInput) labelInput.value = single ? one.label : '';
 
   for (const dim of ['w', 'h']) {
@@ -124,29 +130,28 @@ function syncInspector({ typing = false } = {}) {
       if (document.activeElement !== input) input.value = values.size === 1 ? String(Number([...values][0].toFixed(2))) : '';
     }
   }
-  for (const b of $('stage-palette').children) b.disabled = !sel.length;
   for (const b of $$('[data-arrange-kind]')) b.disabled = nodes.length < (b.dataset.arrangeKind.endsWith('spread') ? 3 : 2);
   for (const b of $$('.dup')) b.disabled = !nodes.length;
-  for (const b of $$('.del')) b.disabled = !sel.length;
-
-  // Behaviour
-  $('target').textContent = !sel.length
-    ? 'Click an object, or draw a loop around several. Pick a colour, drag to record a move, or use the handles to resize.'
-    : !one ? `${sel.length} selected: a colour, a drag, a size or an arrangement applies to all of them at once.`
-      : `${kindName(one)} ${name}: pick a colour${single ? ', drag it to record a move, resize it' : ''}, or remove it.`;
+  for (const b of $$('.del')) {
+    b.disabled = !sel.length;
+    b.textContent = atStart() ? 'Delete' : 'Remove';
+    b.title = atStart() ? 'Delete the selection (Delete)' : 'The selection disappears at this step (Delete)';
+  }
   for (const b of $('palette').children) b.disabled = !sel.length;
-  const made = single && typeof one.id === 'string'; // created by a step: its label can still change
-  $('step-label-wrap').hidden = !made;
-  if (made && !typing) $('step-label').value = one.label;
+  $('dur').disabled = $('pause').disabled = atStart();
+  $('target').innerHTML = atStart()
+    ? '<b>Start</b>: you are drawing the starting picture. Pick a step below to add changes over time.'
+    : point === 0 ? '<b>New steps go first</b>. Every change you make now becomes a step.'
+      : `<b>New steps go after step ${point}</b>. Every change you make now becomes a step.`;
 }
 
 // Arrange buttons: align to an edge or centre, spread evenly.
 const ARRANGE = {
   left: ['Align left edges', 'M3 2v12M6 4h7v3H6zM6 9h4v3H6z'],
-  hcenter: ['Centre horizontally', 'M8 2v12M3.5 4h9v3h-9zM5 9h6v3H5z'],
+  hcenter: ['Centres in a column', 'M8 2v12M3.5 4h9v3h-9zM5 9h6v3H5z'],
   right: ['Align right edges', 'M13 2v12M3 4h7v3H3zM6 9h4v3H6z'],
   top: ['Align top edges', 'M2 3h12M4 6v7h3V6zM9 6v4h3V6z'],
-  vcenter: ['Centre vertically', 'M2 8h12M4 3.5v9h3v-9zM9 5v6h3V5z'],
+  vcenter: ['Centres in a row', 'M2 8h12M4 3.5v9h3v-9zM9 5v6h3V5z'],
   bottom: ['Align bottom edges', 'M2 13h12M4 3v7h3V3zM9 6v4h3V6z'],
   hspread: ['Spread evenly across', 'M2 3v10M14 3v10M6.5 5h3v6h-3z'],
   vspread: ['Spread evenly down', 'M3 2h10M3 14h10M5 6.5h6v3H5z'],
@@ -177,8 +182,8 @@ for (const dim of ['w', 'h']) {
 for (const b of $$('.dup')) b.addEventListener('click', () => editor.duplicate());
 for (const b of $$('.del')) b.addEventListener('click', deleteSelection);
 function deleteSelection() {
-  if (tab === 'stage') { editor.deleteSelected(); return; }
-  // Behaviour: the objects disappear at this step. A node takes its lines along, so only lines
+  if (atStart()) { editor.deleteSelected(); return; }
+  // later: the objects disappear at this step. A node takes its lines along, so only lines
   // whose nodes stay need a step of their own.
   const sel = editor.selection();
   const nodes = new Set(sel.filter((o) => o.kind === 'node').map((o) => o.id));
@@ -186,14 +191,13 @@ function deleteSelection() {
   addSteps([...nodes, ...lines.map((e) => e.id)].map((id) => ({ op: 'remove', target: id })));
   editor.setSelection([]);
 }
-$('step-label').addEventListener('input', () => {
+labelInput.addEventListener('input', () => {
+  if (atStart()) { editor.setLabel(labelInput.value); return; }
   const add = steps.find((s) => s.op === 'add' && s.id === editor.selected);
   if (!add) return;
-  add.label = $('step-label').value;
+  add.label = labelInput.value;
   stepsChanged({ keepSelection: true });
-  syncInspector({ typing: true }); // the hint shows the new name
 });
-labelInput.addEventListener('input', () => editor.setLabel(labelInput.value));
 
 function loadStage(text) {
   try {
@@ -216,28 +220,27 @@ $('clear').addEventListener('click', () => loadStage(''));
 // Start again: an empty stage, no steps, no code (Undo brings it all back)
 $('new').addEventListener('click', () => {
   steps = [];
+  point = null;
   scriptBox.value = '';
   loadStage('');
   stepsChanged();
   updateRunOrder();
 });
 
-// ---------- 2. Behaviour: steps ----------
-// Colour swatches: on the Stage they colour the selection now, in Behaviour they add colour steps.
-for (const [box, pick] of [
-  ['stage-palette', (c) => editor.setColor(c)],
-  ['palette', (c) => addSteps(editor.selectedIds().map((id) => ({ op: 'color', target: id, color: c })))],
-]) {
-  for (const c of PALETTE) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'swatch';
-    b.title = c;
-    b.style.background = paint(c);
-    b.disabled = true;
-    b.addEventListener('click', () => pick(c));
-    $(box).append(b);
-  }
+// ---------- Build: the steps ----------
+// Colour swatches: at the start they colour the selection, later they add colour steps.
+for (const c of PALETTE) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'swatch';
+  b.title = c;
+  b.style.background = paint(c);
+  b.disabled = true;
+  b.addEventListener('click', () => {
+    if (atStart()) editor.setColor(c);
+    else addSteps(editor.selectedIds().map((id) => ({ op: 'color', target: id, color: c })));
+  });
+  $('palette').append(b);
 }
 
 function stepDur() {
@@ -246,12 +249,14 @@ function stepDur() {
 }
 
 let justAdded = new Set(); // the steps that slide into the list
-/** Adds steps; when there are several (a selection of many objects) they all play together. */
+/** Inserts steps at the current point; several (a selection of many objects) play together. */
 function addSteps(list) {
   if (!list.length) return;
+  if (atStart()) point = steps.length;
   const dur = stepDur();
   const added = list.map((s, i) => ({ dur, together: i > 0, ...s }));
-  steps.push(...added);
+  steps.splice(point, 0, ...added);
+  point += added.length;
   justAdded = new Set(added);
   stepsChanged();
   justAdded = new Set();
@@ -261,9 +266,10 @@ $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); }
 
 /** Paste in Behaviour: the copies appear (and their lines), all at once. Returns their ids. */
 function pasteSteps(plan) {
+  if (atStart()) point = steps.length;
   const dur = stepDur();
   const added = [];
-  const push = (s) => { const step = { dur, together: added.length > 0, ...s }; steps.push(step); added.push(step); };
+  const push = (s) => { const step = { dur, together: added.length > 0, ...s }; steps.splice(point++, 0, step); added.push(step); };
   const ids = plan.nodes.map((n) => {
     const id = nextStepId(steps);
     push({ op: 'add', id, shape: n.shape, label: n.label, x: n.x, y: n.y, size: n.size });
@@ -283,30 +289,56 @@ function pasteSteps(plan) {
   return [...ids, ...lines];
 }
 
-function stepsChanged({ keepSelection = false } = {}) {
-  steps = pruneSteps(steps, editor.scene); // a step whose object is gone goes too
-  renderSteps();
-  projectChanged();
-  if (tab !== 'behaviour') return;
-  showBehaviour();
-  if (!keepSelection) editor.setSelection(editor.selectedIds()); // drops objects that are gone
+/**
+ * A step whose object is gone goes too (a deleted object, or a remove inserted before steps that used
+ * it). Keeps the current point on the same step and says when later steps were dropped.
+ */
+function prune() {
+  const before = steps.length, upto = point === null ? null : new Set(steps.slice(0, point));
+  steps = pruneSteps(steps, editor.scene);
+  if (upto) point = steps.filter((s) => upto.has(s)).length;
+  const dropped = before - steps.length;
+  $('dropped-note').hidden = !dropped;
+  if (dropped) $('dropped-note').textContent = `${dropped} step${dropped === 1 ? '' : 's'} used an object that is no longer there, so ${dropped === 1 ? 'it was' : 'they were'} removed. Ctrl+Z brings ${dropped === 1 ? 'it' : 'them'} back.`;
 }
 
-// The picture after all steps (what you are building on), plus faint trails of the moves.
-function showBehaviour() {
+function stepsChanged({ keepSelection = false } = {}) {
+  prune();
+  renderSteps();
+  projectChanged();
+  if (tab !== 'build') return;
+  showPoint();
+  if (!keepSelection) editor.setSelection(editor.selectedIds()); // drops objects that are gone
+  syncInspector();
+}
+
+/** Work at a point: null = the start, k = after the first k steps. */
+function setPoint(k) {
+  point = k === null ? null : Math.max(0, Math.min(steps.length, k));
+  renderSteps();
+  showPoint();
+}
+
+// The canvas at the current point: the starting picture, or the picture after the first k steps with
+// faint trails of their moves.
+function showPoint() {
+  $('canvas-hint').textContent = HINTS[atStart() ? 'start' : 'steps'];
+  if (atStart()) { showError(null); editor.setMode('stage'); syncInspector(); return; }
   try {
-    const built = buildSteps(steps, editor.scene);
+    const upto = steps.slice(0, point);
+    const built = buildSteps(upto, editor.scene);
     const result = runProgram(fengari, { stage: toStageLua(editor.scene), steps: built.code });
     showError(null);
-    const view = toEditorIds(sceneAt(result.timeline, result.timeline.durationMs), result, editor.scene, steps, built.stepAtLine);
+    const view = toEditorIds(sceneAt(result.timeline, result.timeline.durationMs), result, editor.scene, upto, built.stepAtLine);
     const trails = tweens(result.timeline)
       .filter((tw) => tw.prop === 'pos' && (tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
       .map((tw) => [tw.from, tw.to]);
-    editor.setView(view, trails);
+    editor.setMode('behaviour', view, trails);
   } catch (e) {
     showError(e.message);
-    editor.setView(null);
+    editor.setMode('behaviour', null);
   }
+  syncInspector();
 }
 
 /**
@@ -343,19 +375,44 @@ function describe(s, names) {
 }
 
 
+// The list: a Start row, the steps, and a marker where new steps go. Clicking a row works at that point.
 function renderSteps() {
   const list = $('steps');
   list.replaceChildren();
   const names = stepNames(steps, editor.scene);
+  const pick = (li, k) => {
+    li.classList.add('pickable');
+    li.addEventListener('click', (e) => { if (!e.target.closest('input, select, button')) setPoint(k); });
+  };
+  const marker = () => {
+    const li = el('li', 'marker');
+    li.append(el('span', 'num', '▸'), el('span', 'what', 'New steps go here'));
+    return li;
+  };
+
+  const start = el('li', `start${atStart() ? ' current' : ''}`);
+  const what = el('span', 'what');
+  what.append(el('b', null, 'Start'), ' the starting picture');
+  start.append(el('span', 'num', '●'), what);
+  pick(start, null);
+  list.append(start);
+  if (point === 0) list.append(marker());
+
   steps.forEach((s, i) => {
     const li = el('li');
     const prev = steps[i - 1];
     li.append(el('span', 'num', String(i + 1)), describe(s, names));
+    pick(li, i + 1);
+    if (point === i + 1) li.classList.add('current');
 
     const remove = el('button', 'x', '×');
     remove.type = 'button';
     remove.title = 'Remove step';
-    remove.addEventListener('click', () => { steps.splice(i, 1); stepsChanged(); });
+    remove.addEventListener('click', () => {
+      steps.splice(i, 1);
+      if (point !== null && i < point) point--;
+      stepsChanged();
+    });
     li.append(remove);
 
     const opts = el('div', 'opts');
@@ -383,8 +440,19 @@ function renderSteps() {
     if (s.together && prev && !RUNS_TIME.has(prev.op)) li.classList.add('together');
     if (justAdded.has(s)) li.classList.add('new');
     list.append(li);
+    if (point === i + 1) list.append(marker());
   });
-  $('steps-empty').hidden = steps.length > 0;
+  if (atStart()) {
+    const add = el('li', 'add');
+    add.append(el('span', 'num', '+'), el('span', 'what', steps.length ? 'Add steps at the end' : 'Add steps: changes over time'));
+    pick(add, steps.length);
+    list.append(add);
+  }
+  // keep the marker in view by scrolling the list only (scrollIntoView would move the whole page)
+  const mark = list.querySelector('.marker, .start.current');
+  if (mark && (mark.offsetTop < list.scrollTop || mark.offsetTop + mark.offsetHeight > list.scrollTop + list.clientHeight)) {
+    list.scrollTop = mark.offsetTop - list.clientHeight / 2;
+  }
   stepsView.set(stepsToLua(steps, editor.scene) || '-- no steps yet');
   updateRunOrder();
 }
@@ -678,7 +746,7 @@ window.addEventListener('keydown', (e) => {
     deleteSelection();
   } else if (e.key === 'Escape') {
     editor.select(null);
-  } else if (tab === 'stage' && editor.sel.size && e.key.startsWith('Arrow')) {
+  } else if (atStart() && editor.sel.size && e.key.startsWith('Arrow')) {
     // nudge the selection; Shift = 10 px (in Behaviour a nudge would add a step per key press, so drag instead)
     const d = e.shiftKey ? 10 : 1;
     editor.nudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);
@@ -696,13 +764,17 @@ window.addEventListener('keydown', (e) => {
 const SAVE_KEY = 'gepv1.project';
 const snapshot = () => JSON.stringify({ v: 1, scene: editor.scene, steps, script: scriptBox.value });
 
+const autosave = (text) => { try { localStorage.setItem(SAVE_KEY, text); } catch { /* private window or storage full: just no autosave */ } };
+
 function restoreProject(text) {
+  autosave(text); // undo and redo are saved too, so a reload shows what you see
   const p = JSON.parse(text);
   editor.setScene(Scene.from(p.scene)); // (this prunes the old steps; they are replaced next)
   steps = p.steps;
   scriptBox.value = p.script ?? '';
+  if (point !== null) point = Math.min(point, steps.length);
   renderSteps();
-  if (tab === 'behaviour') showBehaviour();
+  if (tab === 'build') showPoint();
   syncInspector();
   updateRunOrder();
 }
@@ -733,12 +805,9 @@ function showTab(next, { replay = false } = {}) {
   $('player').hidden = editing;
   $('canvas-hint').textContent = HINTS[tab] ?? '';
   $('tools').hidden = !editing;
-  $('tools').dataset.mode = tab;
 
   if (editing) {
-    editor.select(null);
-    editor.setMode(tab);
-    if (tab === 'behaviour') showBehaviour();
+    showPoint();
   } else if (ran === 'changed' || replay) {
     player.frame = 0;
     play(); // Run, or a new or changed program: play from the start
@@ -768,13 +837,15 @@ function restoreSaved() {
 }
 if (!restoreSaved()) loadStage(await fetch('/examples/stage.lua').then((r) => r.text()));
 steps = pruneSteps(steps, editor.scene);
+point = steps.length ? steps.length : null; // carry on at the end, or draw the start of a new project
 renderSteps();
 updateRunOrder();
-showTab('stage');
+editor.setTool('circle');
+showTab('build');
 history = new History({
   snapshot,
   restore: restoreProject,
-  onCommit: (text) => { try { localStorage.setItem(SAVE_KEY, text); } catch { /* private window or storage full: just no autosave */ } },
+  onCommit: autosave,
 });
 updateHistoryButtons();
 window.addEventListener('pagehide', () => history.commit());
