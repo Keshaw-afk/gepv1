@@ -6,7 +6,7 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 ---
 
 
-> **Round after v1.1.0 (uncommitted work until committed; not released).** At the user's request:
+> **v2.0.0 (the round after v1.1.0).** At the user's request:
 > **removed** `tree_layout`, `push`, `simulate`, rules (spread/fall/drift/towards), the Push tool, Tidy tree,
 > Let it move and the rotation/untangle/rules examples (`core/layout.js`, `core/motion.js`, their tests and
 > tools are gone). **Added:** `size(id, s, dur?, ease?)` and `node(..., size)` (0.25 to 5; SVG `scale()`; animated
@@ -26,13 +26,13 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 > `127.0.0.1:8080`, not `localhost`: autosave lives in localStorage per origin, and localhost holds the
 > user's own work. Sections 2 to 5 below
 > still describe v1.1.0 where they mention the removed features: read those as history.
-> **Release note for the user:** scripts using the removed functions stop working, so ask whether this is a
-> MAJOR bump (2.0.0) before `npm version`.
+> Released as **v2.0.0** (major: the Lua API lost `tree_layout`, `push` and `simulate`).
 
 ## 1. Where things stand
 
-- Current release: **v1.1.0** (2026-11-17, tagged and pushed to the private GitHub repo `gepv1`).
-  It is v1.0.0 plus shapes and motion. Chosen as a minor bump: every v1.0.0 Lua script still runs;
+- Current release: **v2.0.0** (2026-11-18, tagged and pushed to the private GitHub repo `gepv1`): the
+  Build tab, lasso, width/height, stage colours, undo/autosave; rule motion and tree layout removed (see
+  the note above). Previous: **v1.1.0** (2026-11-17), v1.0.0 plus shapes and motion. Chosen as a minor bump: every v1.0.0 Lua script still runs;
   the exported SVG *code* changed (`cx`/`cy` → `translate()`, arrows are `<polyline>` with a marker,
   see §3) but the pictures are the same, and nothing was parsing the SVG yet.
 
