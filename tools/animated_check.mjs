@@ -37,7 +37,12 @@ const CASES = {
   // sizes: set at creation, smooth and linear changes, an interrupted one, an instant one, with moves and arrows
   sizes: {
     stage: 'A = node("A", 100, 100, 1.5) B = rect("B", 400, 200) C = triangle("C", 500, 80) T = text("Big", 300, 320, 2) arrow(A, B) edge(B, C)',
-    script: 'size(A, 3, 1, "smooth"); size(B, 0.5, 0.8); wait(0.4); size(A, 1, 0.6); move(B, 100, 300, 0.6, "smooth"); size(C, 2, 0); wait(0.8); size(T, 0.5, 0.5); X = rect("X", 50, 50, 3); size(X, 1, 0.5); wait(0.6)',
+    script: 'size(A, 3, 3, 1, "smooth"); size(B, 0.5, 0.5, 0.8); wait(0.4); size(A, 1, 1, 0.6); move(B, 100, 300, 0.6, "smooth"); size(C, 2, 2, 0); wait(0.8); size(T, 0.5, 0.5, 0.5); X = rect("X", 50, 50, 3); size(X, 1, 1, 0.5); wait(0.6)',
+  },
+  // width and height apart: stretch, cross over (the label follows the smaller), instant, smooth, created stretched
+  stretch: {
+    stage: 'A = node("A", 120, 120, 2, 1) B = rect("B", 400, 120) C = triangle("C", 300, 260, 1, 2) T = text("Hi", 520, 300) edge(A, B) arrow(B, C)',
+    script: 'size(A, 1, 2, 1); size(B, 3, 1, 0.8, "smooth"); wait(0.3); size(C, 2, 0.5, 0.7, "smooth"); size(T, 3, 1, 0.5); wait(0.9); size(B, 1, 1.5, 0); move(B, 300, 100, 0.5); wait(0.6)',
   },
 };
 
@@ -86,10 +91,12 @@ function check(data) {
         const m = tf(g);
         checks++;
         if (Math.abs(m.e - n.x) > 0.6 || Math.abs(m.f - n.y) > 0.6) bad.push(`${s.t} ${n.id} pos ${m.e.toFixed(2)},${m.f.toFixed(2)} vs ${n.x.toFixed(2)},${n.y.toFixed(2)}`);
-        const inner = g.querySelector(':scope > g'); // the scale group, for objects that are ever not normal size
-        const sc = inner ? tf(inner).a : 1;
+        // size: the outline scales by width and height, the label by the smaller of the two
+        const ol = g.querySelector('circle,rect,polygon'), tx = g.querySelector('text');
+        const want = { w: n.size.w, h: n.size.h, m: Math.min(n.size.w, n.size.h) };
+        const got = { w: ol ? tf(ol).a : want.w, h: ol ? tf(ol).d : want.h, m: tf(tx).a };
         checks++;
-        if (Math.abs(sc - n.size) > 0.01) bad.push(`${s.t} ${n.id} size ${sc.toFixed(3)} vs ${n.size.toFixed(3)}`);
+        if (['w', 'h', 'm'].some((k) => Math.abs(got[k] - want[k]) > 0.01)) bad.push(`${s.t} ${n.id} size ${got.w.toFixed(3)}x${got.h.toFixed(3)}/${got.m.toFixed(3)} vs ${want.w.toFixed(3)}x${want.h.toFixed(3)}`);
         const fillEl = n.shape === 'text' ? g.querySelector('text') : g.querySelector('circle,rect,polygon');
         const f = hex(getComputedStyle(fillEl).fill);
         checks++;

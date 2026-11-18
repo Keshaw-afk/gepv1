@@ -5,7 +5,8 @@
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
 import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, INSTANT, RUNS_TIME } from '../core/steps.js';
-import { Scene } from '../core/scene.js';
+import { Scene, DEFAULT_EDGE_COLOR } from '../core/scene.js';
+import { sizeOf, defaultColor } from '../core/shapes.js';
 import { ARRANGE_KINDS } from '../core/arrange.js';
 import { sceneAt, frameTimes, tweens } from '../core/player.js';
 import { renderSVG, paint } from '../core/svg.js';
@@ -22,8 +23,8 @@ const $ = (id) => document.getElementById(id);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
-  stage: 'Click empty space to add a shape · Drag on empty space: select several · Drag: move · Corner handle: resize · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
-  behaviour: 'The picture after your steps · Click or drag a box to select · Pick a colour · Drag: record a move · Corner handle: resize · Shapes add objects',
+  stage: 'Click empty space to add a shape · Draw a loop on empty space: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
+  behaviour: 'The picture after your steps · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
@@ -115,19 +116,22 @@ function syncInspector({ typing = false } = {}) {
   labelInput.disabled = !single;
   if (document.activeElement !== labelInput) labelInput.value = single ? one.label : '';
 
-  const sizes = new Set(nodes.map((n) => n.size ?? 1));
-  for (const input of $$('.size-input')) {
-    input.disabled = !nodes.length;
-    input.placeholder = sizes.size > 1 ? 'mixed' : '';
-    if (document.activeElement !== input) input.value = sizes.size === 1 ? String(Number([...sizes][0].toFixed(2))) : '';
+  for (const dim of ['w', 'h']) {
+    const values = new Set(nodes.map((n) => sizeOf(n.size)[dim]));
+    for (const input of $$(`.size-${dim}`)) {
+      input.disabled = !nodes.length;
+      input.placeholder = values.size > 1 ? 'mixed' : '';
+      if (document.activeElement !== input) input.value = values.size === 1 ? String(Number([...values][0].toFixed(2))) : '';
+    }
   }
+  for (const b of $('stage-palette').children) b.disabled = !sel.length;
   for (const b of $$('[data-arrange-kind]')) b.disabled = nodes.length < (b.dataset.arrangeKind.endsWith('spread') ? 3 : 2);
   for (const b of $$('.dup')) b.disabled = !nodes.length;
   for (const b of $$('.del')) b.disabled = !sel.length;
 
   // Behaviour
   $('target').textContent = !sel.length
-    ? 'Click an object, or drag a box around several. Pick a colour, drag to record a move, or use the corner handle to resize.'
+    ? 'Click an object, or draw a loop around several. Pick a colour, drag to record a move, or use the handles to resize.'
     : !one ? `${sel.length} selected: a colour, a drag, a size or an arrangement applies to all of them at once.`
       : `${kindName(one)} ${name}: pick a colour${single ? ', drag it to record a move, resize it' : ''}, or remove it.`;
   for (const b of $('palette').children) b.disabled = !sel.length;
@@ -161,12 +165,14 @@ for (const slot of $$('[data-arrange]')) {
     slot.append(b);
   });
 }
-for (const input of $$('.size-input')) {
-  input.addEventListener('change', () => {
-    const v = Number(input.value);
-    if (input.value.trim() !== '' && Number.isFinite(v) && v > 0) editor.setSize(v);
-    syncInspector();
-  });
+for (const dim of ['w', 'h']) {
+  for (const input of $$(`.size-${dim}`)) {
+    input.addEventListener('change', () => {
+      const v = Number(input.value);
+      if (input.value.trim() !== '' && Number.isFinite(v) && v > 0) editor.setSize({ [dim]: v });
+      syncInspector();
+    });
+  }
 }
 for (const b of $$('.dup')) b.addEventListener('click', () => editor.duplicate());
 for (const b of $$('.del')) b.addEventListener('click', deleteSelection);
@@ -217,15 +223,21 @@ $('new').addEventListener('click', () => {
 });
 
 // ---------- 2. Behaviour: steps ----------
-for (const c of PALETTE) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'swatch';
-  b.title = c;
-  b.style.background = paint(c);
-  b.disabled = true;
-  b.addEventListener('click', () => addSteps(editor.selectedIds().map((id) => ({ op: 'color', target: id, color: c }))));
-  $('palette').append(b);
+// Colour swatches: on the Stage they colour the selection now, in Behaviour they add colour steps.
+for (const [box, pick] of [
+  ['stage-palette', (c) => editor.setColor(c)],
+  ['palette', (c) => addSteps(editor.selectedIds().map((id) => ({ op: 'color', target: id, color: c })))],
+]) {
+  for (const c of PALETTE) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch';
+    b.title = c;
+    b.style.background = paint(c);
+    b.disabled = true;
+    b.addEventListener('click', () => pick(c));
+    $(box).append(b);
+  }
 }
 
 function stepDur() {
@@ -262,6 +274,9 @@ function pasteSteps(plan) {
     push({ op: 'connect', id, a: ids[e.a], b: ids[e.b], directed: e.directed });
     return id;
   });
+  // the copies keep their colours: an instant colour step each, at the same moment
+  plan.nodes.forEach((n, i) => { if (n.color && n.color !== defaultColor(n.shape)) push({ op: 'color', target: ids[i], color: n.color, dur: 0 }); });
+  plan.edges.forEach((e, i) => { if (e.color && e.color !== DEFAULT_EDGE_COLOR) push({ op: 'color', target: lines[i], color: e.color, dur: 0 }); });
   justAdded = new Set(added);
   stepsChanged();
   justAdded = new Set();
@@ -310,7 +325,8 @@ function describeChange(name, c) {
   } else if (c.op === 'move') {
     what.append(`move → (${Math.round(c.x)}, ${Math.round(c.y)})`);
   } else if (c.op === 'size') {
-    what.append(`size → ×${Number(c.size.toFixed(2))}`);
+    const z = sizeOf(c.size), f = (v) => Number(v.toFixed(2));
+    what.append(z.w === z.h ? `size → ×${f(z.w)}` : `size → width ×${f(z.w)}, height ×${f(z.h)}`);
   } else if (c.op === 'remove') {
     what.append('disappears');
   } else {
@@ -601,10 +617,14 @@ for (const id of ['out-scale', 'out-fps', 'out-font', 'out-bg', 'out-transparent
 }
 readOutput();
 
-$('dl-frame').addEventListener('click', () => {
-  saveText(renderFrame(timeline(), player.times, player.frame, output), frameName(player.frame));
-});
-$('dl-svg').addEventListener('click', () => saveText(renderAnimatedSVG(timeline(), output), 'gepv1.svg'));
+// The SVGs open in a new tab (the animated one plays there); save them from that tab if you want them.
+function openSVG(text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+$('dl-frame').addEventListener('click', () => openSVG(renderFrame(timeline(), player.times, player.frame, output)));
+$('dl-svg').addEventListener('click', () => openSVG(renderAnimatedSVG(timeline(), output)));
 $('dl-mp4').addEventListener('click', async () => {
   const status = $('export-status');
   $('dl-mp4').disabled = true;

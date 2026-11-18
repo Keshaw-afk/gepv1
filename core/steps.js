@@ -4,7 +4,7 @@
 // A step is one of
 //   { op: 'color',   target, color, dur, together }
 //   { op: 'move',    target, x, y, dur, together }
-//   { op: 'size',    target, size, dur, together }         scale an object (1 = normal size)
+//   { op: 'size',    target, size, dur, together }         size = { w, h } (or one number for both); 1 = normal
 //   { op: 'add',     id, shape, label, x, y, size?, together }  a new object appears
 //   { op: 'connect', id, a, b, directed, together }        a new line or arrow appears
 //   { op: 'remove',  target, together }                    an object disappears (a node takes its lines)
@@ -13,7 +13,8 @@
 // create (so the two never clash). dur is in ms. Steps play one after another, except that a step
 // with together=true starts at the same time as the step before it.
 
-import { variableNames, luaString, isUsableName, SHAPE_CALL } from './stage_file.js';
+import { variableNames, luaString, isUsableName, SHAPE_CALL, sizeArgs } from './stage_file.js';
+import { sizeOf } from './shapes.js';
 
 /** Steps that happen at once (no duration). */
 export const INSTANT = new Set(['add', 'connect', 'remove']);
@@ -128,8 +129,8 @@ export function buildSteps(steps, scene) {
     switch (s.op) {
       case 'color': return `color(${ref(s.target)}, ${luaString(s.color)}, ${sec(s.dur)})`;
       case 'move': return `move(${ref(s.target)}, ${Math.round(s.x)}, ${Math.round(s.y)}, ${sec(s.dur)})`;
-      case 'size': return `size(${ref(s.target)}, ${num(s.size)}, ${sec(s.dur)})`;
-      case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${Math.round(s.x)}, ${Math.round(s.y)}${s.size && s.size !== 1 ? `, ${num(s.size)}` : ''})`;
+      case 'size': { const z = sizeOf(s.size); return `size(${ref(s.target)}, ${num(z.w)}, ${num(z.h)}, ${sec(s.dur)})`; }
+      case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${Math.round(s.x)}, ${Math.round(s.y)}${sizeArgs(s.size ?? 1)})`;
       case 'connect': return `${s.directed ? 'arrow' : 'edge'}(${names.get(s.a)}, ${names.get(s.b)})`;
       case 'remove': return `remove(${ref(s.target)})`;
     }

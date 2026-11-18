@@ -20,9 +20,11 @@ npm start            # http://localhost:8080  (PORT=xxxx npm start to change)
 The page has three tabs: **Stage → Behaviour → Result**.
 1. **Stage:** draw the starting picture with the tool row: circles, rectangles, triangles, text,
    lines and arrows (pick a shape and click to add, drag to move, line or arrow tool to connect).
-   **Drag on empty space to lasso** several objects (Ctrl/Cmd-click adds one; Ctrl+A selects all),
-   then move, delete, duplicate or arrange them together. A handle on the corner of a selected object
-   (or the **Size** field) changes its size. Undo/redo (Ctrl+Z / Ctrl+Shift+Z), copy and paste, arrow keys
+   **Draw a loop on empty space** to lasso several objects (a quick straight drag selects the box
+   between its ends; Ctrl/Cmd-click adds one; Ctrl+A selects all), then move, colour, delete, duplicate
+   or line them up together (lining up never piles objects on top of each other). A selected object has
+   handles: right edge = width, bottom edge = height, corner = both (Shift keeps the proportions); or
+   type **W** and **H**. The label never stretches. Colours picked on the Stage are the starting colours. Undo/redo (Ctrl+Z / Ctrl+Shift+Z), copy and paste, arrow keys
    to nudge, and an optional snap-to-grid (G) are there too. Your work is autosaved in the browser;
    **New project** starts again.
 2. **Behaviour:** either
@@ -34,8 +36,8 @@ The page has three tabs: **Stage → Behaviour → Result**.
    Run plays stage → steps → code.
 3. **Result:** works in **frames**, the same frames as the MP4. Step with ‹ › or ←/→ (Shift: 10),
    type a frame number, or jump between **Moments**: the frames where a change has just finished,
-   with the step or Lua line that made it (`[` `]`). Download an **MP4 video**, an **animated SVG**
-   (one file that plays in any browser) or **this frame** as `frame_00043.svg`. **Output** sets the
+   with the step or Lua line that made it (`[` `]`). Download an **MP4 video**, or open the **animated SVG**
+   (plays by itself) or **this frame** in a new tab, to look at or save from there (Ctrl+S). **Output** sets the
    size, frame rate, font and background (transparent for SVG). The SVG code of the current frame
    and the pipeline trace are in collapsible sections with Copy, Save and Wrap.
 
@@ -44,8 +46,8 @@ Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a cl
 block.
 
 In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
-`remove(id)` makes it disappear and `size(id, 1.5, dur)` scales a node about its centre (0.25 to 5;
-`node("A", x, y, 2)` starts at a size). Sizes show in frames, the animated SVG and the MP4.
+`remove(id)` makes it disappear and `size(id, w, h, dur)` makes a node wider and/or taller about its
+centre (factors 0.25 to 5; `size(id, 2)` = both ×2; `rect("A", x, y, 3, 1)` starts stretched). Sizes show in frames, the animated SVG and the MP4.
 
 ## CLI
 

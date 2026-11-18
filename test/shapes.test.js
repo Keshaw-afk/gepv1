@@ -113,29 +113,64 @@ test('animated SVG: an arrow follows its ends, also when an end jumps (a move wi
 });
 
 test('size: a scale about the centre, in frames, the stage file, hit tests and the animated SVG', () => {
-  const r = run('A = node("A", 100, 100, 2) B = rect("B", 300, 100)', 'size(B, 3, 1, "smooth"); wait(1); size(A, 0.5, 0); wait(0.5)');
-  const at = (t) => Object.fromEntries(sceneAt(r.timeline, t).nodes.map((n) => [n.label, n.size]));
+  const r = run('A = node("A", 100, 100, 2) B = rect("B", 300, 100)', 'size(B, 3, 3, 1, "smooth"); wait(1); size(A, 0.5); wait(0.5)');
+  const at = (t) => Object.fromEntries(sceneAt(r.timeline, t).nodes.map((n) => [n.label, n.size.w]));
   assert.deepEqual(at(0), { A: 2, B: 1 });
   assert.ok(Math.abs(at(500).B - 2) < 1e-6, 'smooth is halfway at the half');
-  assert.deepEqual(at(1000), { A: 0.5, B: 3 });
+  assert.deepEqual(at(1500), { A: 0.5, B: 3 });
   // the frame: a scale() only when the size isn't 1
   const svg = renderFrame(r.timeline, [0], 0);
   assert.match(svg, /id="A" class="node circle" transform="translate\(100 100\) scale\(2\)"/);
   assert.match(svg, /id="B" class="node rect" transform="translate\(300 100\)">/);
-  // the stage file keeps sizes as the optional last argument
+  // the stage file keeps sizes as the optional last arguments
   const s = new Scene();
   s.addNode('A', 10, 20, 'circle', 1.5);
   s.addNode('B', 30, 40);
-  assert.match(toStageLua(s), /A = node\("A", 10, 20, 1\.5\)\nB = node\("B", 30, 40\)\n/);
+  s.addNode('C', 50, 60, 'rect', { w: 2, h: 0.5 });
+  assert.match(toStageLua(s), /A = node\("A", 10, 20, 1\.5\)\nB = node\("B", 30, 40\)\nC = rect\("C", 50, 60, 2, 0\.5\)\n/);
   // geometry
   assert.deepEqual(halfSize('rect', '', 2), { x: 64, y: 40 });
+  assert.deepEqual(halfSize('rect', '', { w: 2, h: 0.5 }), { x: 64, y: 10 });
   assert.ok(hits('circle', '', 0, 0, { x: 40, y: 0 }, 2) && !hits('circle', '', 0, 0, { x: 40, y: 0 }));
-  // the animated SVG scales an inner group, so it never fights the move animation
+  assert.ok(hits('circle', '', 0, 0, { x: 40, y: 0 }, { w: 2, h: 1 }) && !hits('circle', '', 0, 0, { x: 0, y: 40 }, { w: 2, h: 1 }));
+  // the animated SVG scales the outline and the label, so it never fights the move animation
   const anim = renderAnimatedSVG(r.timeline);
-  assert.match(anim, /<g transform="scale\(2\)">\s*<animateTransform attributeName="transform" type="scale" from="0.5" to="0.5" begin="1s" dur="0.001s"/);
-  assert.match(anim, /type="scale" from="1" to="3" begin="0s" dur="1s" calcMode="spline"/);
+  assert.match(anim, /<circle r="24" fill="#cccccc" transform="scale\(2 2\)">\s*<animateTransform attributeName="transform" type="scale" from="2 2" to="0.5 0.5" begin="1s" dur="0.5s"/);
+  assert.match(anim, /type="scale" from="1 1" to="3 3" begin="0s" dur="1s" calcMode="spline"/);
   // bad sizes are refused with a clear message
-  assert.throws(() => run('A = node("A", 1, 1)', 'size(A, 0)'), /size must be from 0.25 to 5/);
+  assert.throws(() => run('A = node("A", 1, 1)', 'size(A, 0, 1)'), /size must be from 0.25 to 5/);
   assert.throws(() => run('', 'A = node("A", 1, 1, 9)'), /size must be from/);
+  assert.throws(() => run('A = node("A", 1, 1)', 'size(A, 2, "smooth")'), /needs a width and a height/);
   assert.ok(API_NAMES.includes('size') && !API_NAMES.includes('tree_layout'));
+});
+
+test('width and height apart: the outline stretches, the label grows only with the smaller one', () => {
+  const r = run('A = rect("A", 100, 100, 2, 1) T = text("Hi", 300, 100)', 'size(A, 1, 3, 1); size(T, 3, 1, 0); wait(1)');
+  const frame = (t) => renderFrame(r.timeline, [t], 0);
+  assert.match(frame(0), /<g id="A" class="node rect" transform="translate\(100 100\)">\n {4}<rect [^>]*transform="scale\(2 1\)"\/>\n {4}<text y="6" fill/);
+  assert.match(frame(1000), /<rect [^>]*transform="scale\(1 3\)"\/>/);
+  assert.match(frame(1000), /id="Hi" class="node text" transform="translate\(300 100\)">\n {4}<text y="6" fill/, 'a text shape never stretches');
+  const mid = sceneAt(r.timeline, 500).nodes[0].size;
+  assert.deepEqual(mid, { w: 1.5, h: 2 });
+  // the label's scale crosses from height (1) to width (1): sampled, with the crossing point
+  const anim = renderAnimatedSVG(r.timeline);
+  assert.match(anim, /<text y="6" transform="scale\(1\)"[^>]*>A<animateTransform attributeName="transform" type="scale" values="1;[^"]*" keyTimes="0;[^"]*0\.5;[^"]*" begin="0s" dur="1s"/);
+  assert.match(formatTrace(r).join('\n'), /set A\.size -> 1×3 {2}dur=1\.00/);
+});
+
+test('a coloured object on the stage starts in that colour: no change, no moment', () => {
+  const s = new Scene();
+  const a = s.addNode('A', 10, 20), b = s.addNode('B', 50, 20, 'rect');
+  const e = s.addEdge(a, b);
+  s.get(a).color = 'red';
+  s.get(e).color = 'blue';
+  const lua = toStageLua(s);
+  assert.match(lua, /\ncolor\(A, "red", 0\)\ncolor\(edge_of\(A, B\), "blue", 0\)\n$/);
+  const r = run(lua, 'color(A, "green", 0); wait(1)');
+  assert.deepEqual(r.timeline.commands.filter((c) => c.op === 'set').map((c) => c.value), ['green'], 'only the script\'s own change');
+  assert.equal(sceneAt(r.timeline, 0).edges[0].color, 'blue');
+  assert.deepEqual(run(lua).scene.nodes().map((n) => n.color), ['red', '#cccccc']);
+  // a colour change that takes time, or one after another at the same moment, stays a change
+  const r2 = run('A = node("A", 0, 0) color(A, "red", 1) color(A, "blue", 0)');
+  assert.equal(r2.timeline.commands.filter((c) => c.op === 'set').length, 2);
 });

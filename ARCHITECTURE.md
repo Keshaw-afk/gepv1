@@ -145,9 +145,17 @@ starts from wherever the property currently is, so a move can change direction m
 **Movement is ordinary moves**
 `pos(id)` tells a script where a node is right now (also halfway through a move).
 
-`size(id, s, dur?, ease?)` scales a node about its centre like a colour change (a uniform factor, 0.25 to
-5; the static SVG adds `scale(s)` to the node's `transform` only when it is not 1; the animated SVG scales an
-inner group so it never fights the move animation).
+`size(id, w, h, dur?, ease?)` scales a node about its centre like a colour change: a width and a height
+factor, 0.25 to 5 (`size(id, s)` = both). Values are `{ w, h }` (a plain number still reads as both). The
+label never stretches: it scales by the smaller factor, and so does a text shape. Static SVG: a uniform size
+is `scale(s)` on the node's `transform` (only when not 1); a stretched one puts `scale(w h)` on the outline
+and `scale(min)` on the label. The animated SVG always animates those two (outline and label), so a size
+never fights the move on the group; where width and height cross over during a tween the label's scale is
+sampled every 10 ms plus the exact crossing.
+
+**Stage colours:** `stage.lua` writes `color(A, "red", 0)` after the shapes. In stage.lua only, an instant
+colour on an object created at that moment becomes its starting colour (the create command's colour), so
+it is no change in the timeline, no moment and no trace line.
 
 ---
 
@@ -197,11 +205,11 @@ test/      node:test suites
 | Shape tool, click empty canvas | Add that shape (auto label `A`, `B`, …; text asks for its words) | The object appears |
 | Drag an object | Move it | Record a move |
 | Line or arrow tool (or Shift-drag) from one object to another | Connect them | They get connected |
-| Pick a colour | | Colour change |
-| Drag on empty space (any tool) | Lasso: select several | same |
+| Draw a loop on empty space (any tool) | Lasso: select several (a straight drag = the box between its ends) | same |
 | Ctrl/Cmd-click, Ctrl+A | Add to / toggle the selection; select all | same |
-| Corner handle, Size field | Change size | `size` steps (all selected together) |
-| Align / spread buttons | Move the nodes now | Move steps together |
+| Pick a colour | Colour the selection (starting colour) | Colour steps |
+| Handles (right = width, bottom = height, corner = both, Shift = keep shape), W and H fields | Change size | `size` steps (all selected together) |
+| Align / spread buttons (overlapping objects are moved apart the other way, 30 px gap) | Move the nodes now | Move steps together |
 | Duplicate, Ctrl+C / Ctrl+V | Copy of the nodes and lines between them | `add` + `connect` steps |
 | Delete key / Delete or Remove button | Delete the selection (with its lines) | The objects disappear |
 | Arrow keys (Shift: 10 px), `G` | Nudge; snap to grid | Snap only |
@@ -219,7 +227,7 @@ An arrow's points depend on both ends, so they are sampled every 10 ms while eit
 Objects created later start hidden; removed ones are hidden from then on. When animations overlap,
 the later one wins, as in the player. It uses the same ids, classes and `<style>` as a still frame.
 It was checked in
-Chrome against the player every 23 ms for the DFS, network, edge-case and size scripts (17,019 checks: position, colour and visibility of every object,
+Chrome against the player every 23 ms for the DFS, network, edge-case, size and stretch scripts (18,933 checks: position, colour and visibility of every object,
 arrow points). It matched everywhere except exactly on a command's start instant, where Chrome's
 clock is half a millisecond off. It plays once.
 
@@ -250,7 +258,8 @@ wait(t)                 -- advance the script clock by t seconds
 pos(id)                 -- x, y of a node right now (also halfway through a move)
 neighbors(id)           -- list of nodes connected to id (edges are undirected, creation order)
 edge_of(a, b)           -- id of the edge between a and b, or nil
-size(id, s, dur?, ease?) -- scale a node about its centre (0.25 to 5, 1 = normal); node(..., size) starts at a size
+size(id, w, h, dur?, ease?) -- width and height factors about the centre (0.25 to 5, 1 = normal); size(id, s) = both
+                        --   node(label, x, y, w?, h?) and rect/triangle/text start at a size
 print(...)              -- shown in the trace
 ```
 

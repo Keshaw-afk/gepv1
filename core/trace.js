@@ -1,8 +1,10 @@
 // Trace: a readable report of what every pipeline stage produced.
 
 import { sceneAt, frameTimes } from './player.js';
+import { sizeOf } from './shapes.js';
 
 const sec = (ms) => (ms / 1000).toFixed(2);
+const sizeText = (s) => { const z = sizeOf(s); const f = (v) => Number(v.toFixed(2)); return z.w === z.h ? `×${f(z.w)}` : `${f(z.w)}×${f(z.h)}`; };
 
 // Names come from the command (the name when it ran), so removed objects still read well.
 function describe(cmd) {
@@ -13,7 +15,7 @@ function describe(cmd) {
   }
   if (cmd.op === 'create') return `create ${cmd.props.directed ? 'arrow' : 'edge'} ${name}`;
   if (cmd.op === 'remove') return `remove ${name}`;
-  const v = cmd.prop === 'pos' ? `(${Math.round(cmd.value.x)},${Math.round(cmd.value.y)})` : cmd.value;
+  const v = cmd.prop === 'pos' ? `(${Math.round(cmd.value.x)},${Math.round(cmd.value.y)})` : cmd.prop === 'size' ? sizeText(cmd.value) : cmd.value;
   const how = cmd.ease ? ` ${cmd.ease}` : '';
   return `set ${name}.${cmd.prop} -> ${v}  dur=${sec(cmd.dur)}${how}`;
 }
@@ -46,8 +48,9 @@ export function formatTrace({ timeline, log, stageCommands }, { fps = 25 } = {})
     const st = sceneAt(timeline, mid);
     const obj = [...st.nodes, ...st.edges].find((o) => o.id === tween.id);
     const pos = (p) => `(${Math.round(p.x)},${Math.round(p.y)})`;
-    const val = tween.prop === 'pos' ? pos(obj) : obj.color;
-    const target = tween.prop === 'pos' ? pos(tween.value) : tween.value;
+    const show = (v) => (tween.prop === 'pos' ? pos(v) : tween.prop === 'size' ? sizeText(v) : v);
+    const val = show(tween.prop === 'pos' ? obj : tween.prop === 'size' ? obj.size : obj.color);
+    const target = show(tween.value);
     lines.push(`[player]    t=${sec(mid)}  ${tween.name}.${tween.prop} = ${val}  (halfway to ${target})`);
   }
 

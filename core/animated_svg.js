@@ -5,8 +5,9 @@
 // It uses the same resolved tweens as the player (tweens() in player.js), so it shows exactly
 // what the preview and the MP4 show:
 //   colour tween  -> <animate attributeName="fill|stroke"> (+ the label flips black/white)
-//   size tween    -> <animateTransform type="scale"> on an inner group (only objects that are ever
-//                    not normal size get one, so a size animation never fights the move animation)
+//   size tween    -> <animateTransform type="scale"> on the outline (width and height) and on the
+//                    label (the smaller of the two, so it never stretches); only objects that are
+//                    ever not normal size get them, and they never fight the move on the group
 //   move tween    -> <animateTransform type="translate"> on the object's group (eased moves use the
 //                    same curve as SMIL keySplines) and <animate> on the ends of every line touching it
 //   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves,
@@ -18,8 +19,8 @@
 import { tweens, positionsOf } from './player.js';
 import { contrastText, mixColor } from './colors.js';
 import { DEFAULT_OUTPUT } from './output.js';
-import { smilEase } from './easing.js';
-import { outline, outlineTag, labelDy } from './shapes.js';
+import { smilEase, ease } from './easing.js';
+import { outline, outlineTag, labelDy, sizeOf, labelScale } from './shapes.js';
 import { paint, esc, n, n3, timelineIds, svgOpen, styleBlock, arrowDefs, backgroundRect, translate, arrowPoints, labelFill, ARROWHEAD_ID } from './svg.js';
 
 const SAMPLE_MS = 10;
@@ -36,9 +37,28 @@ function animateMove(from, to, t0, dur, ease) {
   return `<animateTransform attributeName="transform" type="translate" from="${f}" to="${t}" begin="${s(t0)}" dur="${s(dur)}"${smilEase(ease)} fill="freeze"/>`;
 }
 
-function animateScale(from, to, t0, dur, ease) {
-  if (dur === 0) return `<animateTransform attributeName="transform" type="scale" from="${n3(to)}" to="${n3(to)}" begin="${s(t0)}" dur="0.001s" fill="freeze"/>`;
-  return `<animateTransform attributeName="transform" type="scale" from="${n3(from)}" to="${n3(to)}" begin="${s(t0)}" dur="${s(dur)}"${smilEase(ease)} fill="freeze"/>`;
+// from / to are "s" or "w h"
+function animateScale(from, to, t0, dur, easing) {
+  if (dur === 0) return `<animateTransform attributeName="transform" type="scale" from="${to}" to="${to}" begin="${s(t0)}" dur="0.001s" fill="freeze"/>`;
+  return `<animateTransform attributeName="transform" type="scale" from="${from}" to="${to}" begin="${s(t0)}" dur="${s(dur)}"${smilEase(easing)} fill="freeze"/>`;
+}
+const wh = (z) => `${n3(z.w)} ${n3(z.h)}`;
+
+// The label's scale during a size tween: the smaller of width and height. That is one straight
+// tween unless width and height cross over during it; then it is sampled (every 10 ms, plus the
+// exact crossing, so a linear tween stays exact).
+function animateLabelScale(tw) {
+  const a = sizeOf(tw.from), b = sizeOf(tw.to);
+  const d0 = a.w - a.h, d1 = b.w - b.h;
+  if (tw.dur === 0 || d0 * d1 >= 0) return animateScale(n3(labelScale(a)), n3(labelScale(b)), tw.t0, tw.dur, tw.ease);
+  const at = (f) => { const e = ease(tw.ease ?? 'linear', f); return Math.min(a.w + (b.w - a.w) * e, a.h + (b.h - a.h) * e); };
+  const cross = d0 / (d0 - d1); // in eased progress; find the time by bisection
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (ease(tw.ease ?? 'linear', mid) < cross) lo = mid; else hi = mid; }
+  const fs = new Set([1, hi]);
+  for (let t = 0; t < tw.dur; t += SAMPLE_MS) fs.add(t / tw.dur);
+  const list = [...fs].sort((x, y) => x - y);
+  return `<animateTransform attributeName="transform" type="scale" values="${list.map((f) => n3(at(f))).join(';')}" keyTimes="${list.map((f) => Number(f.toFixed(6))).join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`;
 }
 
 // When does the label switch between black and white text during a colour tween? (or null)
@@ -75,7 +95,8 @@ export function renderAnimatedSVG(timeline, output = {}) {
 
   // Child animation elements for every SVG element we draw: the node's group (moves), its outline
   // (colour), its label (contrast flips; colour for a text shape), and edges.
-  const kids = { group: new Map(), scale: new Map(), outline: new Map(), text: new Map(), edge: new Map() };
+  const kids = { group: new Map(), outline: new Map(), text: new Map(), edge: new Map() };
+  const sized = new Set(); // nodes that are ever not normal size
   const add = (kind, id, el) => { if (!kids[kind].has(id)) kids[kind].set(id, []); kids[kind].get(id).push(el); };
 
   const all = tweens(timeline);
@@ -91,7 +112,9 @@ export function renderAnimatedSVG(timeline, output = {}) {
       const overtaken = all.slice(i + 1).some((x) => x.id === tw.id && x.prop === 'color' && x.t0 < flip);
       if (flip !== null && !overtaken) add('text', tw.id, set('fill', contrastText(tw.to), flip));
     } else if (tw.prop === 'size') {
-      add('scale', tw.id, animateScale(tw.from, tw.to, tw.t0, tw.dur, tw.ease));
+      sized.add(tw.id);
+      if (shape !== 'text') add('outline', tw.id, animateScale(wh(sizeOf(tw.from)), wh(sizeOf(tw.to)), tw.t0, tw.dur, tw.ease));
+      add('text', tw.id, animateLabelScale(tw));
     } else if (tw.prop === 'pos') {
       const { from: f, to } = tw;
       add('group', tw.id, animateMove(f, to, tw.t0, tw.dur, tw.ease));
@@ -160,19 +183,18 @@ export function renderAnimatedSVG(timeline, output = {}) {
   for (const c of nodes) {
     const shape = shapeOf.get(c.id);
     const { x, y } = c.props.pos;
-    // a node that is ever not normal size gets an inner group that carries the scale
-    const sized = (c.props.size ?? 1) !== 1 || kids.scale.has(c.id);
-    const pad = sized ? '    ' : '  ';
+    // a node that is ever not normal size carries the scale on its outline and its label
+    const z = sizeOf(c.props.size);
+    const scaled = sized.has(c.id) || z.w !== 1 || z.h !== 1;
     body.push(`<g id="${esc(ids.get(c.id))}" class="node ${shape}" transform="${translate(x, y)}"${hidden(c)}>`,
       ...[...visibility(c), ...(kids.group.get(c.id) ?? [])].map((k) => `  ${k}`));
-    if (sized) body.push(...el(`  <g transform="scale(${n3(c.props.size ?? 1)})"`, 'g', kids.scale.get(c.id) ?? [], '').map((l, i, a) => (i === 0 || i === a.length - 1 ? l : `  ${l}`)).slice(0, -1));
     if (shape !== 'text') {
       const tag = outlineTag(shape);
-      const shapeEl = outline(shape, ` fill="${paint(c.props.color)}"`).replace(/\/>$/, '');
-      body.push(...el(shapeEl, tag, kids.outline.get(c.id) ?? [], pad));
+      const shapeEl = outline(shape, ` fill="${paint(c.props.color)}"${scaled ? ` transform="scale(${wh(z)})"` : ''}`).replace(/\/>$/, '');
+      body.push(...el(shapeEl, tag, kids.outline.get(c.id) ?? [], '  '));
     }
-    body.push(`${pad}<text y="${labelDy(shape)}" fill="${labelFill(shape, c.props.color)}">${esc(c.props.label)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
-    if (sized) body.push('  </g>');
+    const lt = scaled ? ` transform="scale(${n3(labelScale(z))})"` : '';
+    body.push(`  <text y="${labelDy(shape)}"${lt} fill="${labelFill(shape, c.props.color)}">${esc(c.props.label)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
     body.push('</g>');
   }
   out.push(...body.map((l) => '  ' + l), '</svg>');

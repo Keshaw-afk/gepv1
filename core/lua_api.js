@@ -100,13 +100,18 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     if (!(s >= SIZE.min && s <= SIZE.max)) fail(`size must be from ${SIZE.min} to ${SIZE.max} (1 is the normal size)`);
     return s;
   };
+  // The create command of every object, so an instant colour in stage.lua (a coloured object on the
+  // stage: color(A, "red", 0)) becomes its starting colour, not a change in the timeline.
+  const created = new Map(), coloured = new Set();
+  let inStage = false;
   const makeNode = (shape) => (L) => {
     const label = to_jsstring(lauxlib.luaL_checkstring(L, 1));
     const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
-    const size = lua.lua_isnoneornil(L, 4) ? 1 : checkSize(4);
+    const w = lua.lua_isnoneornil(L, 4) ? 1 : checkSize(4);
+    const size = { w, h: lua.lua_isnoneornil(L, 5) ? w : checkSize(5) };
     const id = scene.addNode(label, x, y, shape, size);
     place.set(id, { from: { x, y }, to: { x, y }, t0: timeline.clockMs, dur: 0, ease: 'linear' });
-    emit({ op: 'create', id, kind: 'node', props: { label, shape, pos: { x, y }, color: defaultColor(shape), size } });
+    created.set(id, emit({ op: 'create', id, kind: 'node', props: { label, shape, pos: { x, y }, color: defaultColor(shape), size } }));
     lua.lua_pushinteger(L, id);
     return 1;
   };
@@ -114,7 +119,7 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     const a = checkObj(1, 'node'), b = checkObj(2, 'node');
     let id;
     try { id = scene.addEdge(a, b, directed); } catch (e) { fail(e.message); }
-    emit({ op: 'create', id, kind: 'edge', props: { a, b, directed, color: DEFAULT_EDGE_COLOR } });
+    created.set(id, emit({ op: 'create', id, kind: 'edge', props: { a, b, directed, color: DEFAULT_EDGE_COLOR } }));
     lua.lua_pushinteger(L, id);
     return 1;
   };
@@ -132,6 +137,9 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       if (!parseColor(c)) fail(`unknown colour '${c}' (use a name like "red" or a hex code like "#ff0000")`);
       const dur = optSeconds(3);
       scene.get(id).color = c;
+      const birth = created.get(id);
+      if (inStage && dur === 0 && birth?.t === timeline.clockMs && !coloured.has(id)) { birth.props.color = c; return 0; }
+      coloured.add(id);
       emit({ op: 'set', id, prop: 'color', value: c, dur });
       return 0;
     },
@@ -142,11 +150,15 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       return 0;
     },
     size(L) {
+      // size(id, w, h, dur?, ease?) ; size(id, s) is short for size(id, s, s)
       const id = checkObj(1, 'node');
-      const s = checkSize(2);
-      const dur = optSeconds(3), easing = optEase(4, 'linear');
-      scene.get(id).size = s;
-      emit({ op: 'set', id, prop: 'size', value: s, dur, ...(easing !== 'linear' && { ease: easing }) });
+      const w = checkSize(2);
+      if (lua.lua_gettop(L) > 2 && lua.lua_type(L, 3) !== lua.LUA_TNUMBER) fail('size(id, width, height, dur?) needs a width and a height (the same number twice keeps the proportions)');
+      const h = lua.lua_isnoneornil(L, 3) ? w : checkSize(3);
+      const dur = optSeconds(4), easing = optEase(5, 'linear');
+      const value = { w, h };
+      scene.get(id).size = value;
+      emit({ op: 'set', id, prop: 'size', value, dur, ...(easing !== 'linear' && { ease: easing }) });
       return 0;
     },
     remove(L) {
@@ -211,7 +223,9 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     }
   };
 
+  inStage = true;
   run(stage, 'stage.lua');
+  inStage = false;
   const stageCommands = timeline.commands.length;
   run(steps, 'steps.lua');
   run(script, 'script.lua');

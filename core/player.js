@@ -3,12 +3,16 @@
 
 import { mixColor } from './colors.js';
 import { ease } from './easing.js';
+import { sizeOf } from './shapes.js';
 
 function lerpValue(prop, from, to, f) {
   if (f >= 1) return to;
   if (prop === 'color') return mixColor(from, to, f);
   if (prop === 'pos') return { x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f };
-  if (prop === 'size') return from + (to - from) * f;
+  if (prop === 'size') {
+    const a = sizeOf(from), b = sizeOf(to);
+    return { w: a.w + (b.w - a.w) * f, h: a.h + (b.h - a.h) * f };
+  }
   return from; // other properties (e.g. label) switch when the tween ends
 }
 
@@ -51,7 +55,7 @@ export function sceneAt(timeline, tMs) {
   for (const o of replay(timeline, tMs).values()) {
     const v = {};
     for (const [k, tw] of Object.entries(o.props)) v[k] = valueAt(tw, k, tMs);
-    if (o.kind === 'node') state.nodes.push({ id: o.id, shape: v.shape ?? 'circle', label: v.label, x: v.pos.x, y: v.pos.y, size: v.size ?? 1, color: v.color });
+    if (o.kind === 'node') state.nodes.push({ id: o.id, shape: v.shape ?? 'circle', label: v.label, x: v.pos.x, y: v.pos.y, size: sizeOf(v.size), color: v.color });
     else state.edges.push({ id: o.id, a: v.a, b: v.b, directed: !!v.directed, color: v.color });
   }
   return state;
@@ -76,7 +80,7 @@ export function frameTimes(durationMs, fps) {
 /** Converts an editor Scene into the same state shape the player produces. */
 export function sceneToState(scene) {
   return {
-    nodes: scene.nodes().map(({ id, shape, label, x, y, size, color }) => ({ id, shape: shape ?? 'circle', label, x, y, size: size ?? 1, color })),
+    nodes: scene.nodes().map(({ id, shape, label, x, y, size, color }) => ({ id, shape: shape ?? 'circle', label, x, y, size: sizeOf(size), color })),
     edges: scene.edges().map(({ id, a, b, directed, color }) => ({ id, a, b, directed: !!directed, color })),
   };
 }

@@ -13,7 +13,14 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 > SVG scales an inner group); lasso and multi-select, group move, resize handle and Size field (Stage and
 > Steps), align/spread (`core/arrange.js`), duplicate, copy/paste, nudge, snap-to-grid, undo/redo and
 > autosave (`web/history.js`, localStorage `gepv1.project`), New project. A step on several objects is
-> several steps with `together`. Copy does not keep colour (the stage has no colour). Sections 2 to 5 below
+> several steps with `together`.
+> **Second pass (user feedback):** free-hand loop lasso (straight drag = box); align/spread moves apart
+> objects that would overlap (`separate()` in arrange.js, 30 px); size is width × height `{w, h}` with
+> width/height/corner handles and W/H fields, label scales by the smaller factor; colours on the Stage
+> (`color(A, "red", 0)` in stage.lua becomes the starting colour, stage.lua only); Animated SVG and This frame
+> open in a new tab (blob URL) instead of downloading. Copy/paste keeps colours. Test in Chrome on
+> `127.0.0.1:8080`, not `localhost`: autosave lives in localStorage per origin, and localhost holds the
+> user's own work. Sections 2 to 5 below
 > still describe v1.1.0 where they mention the removed features: read those as history.
 > **Release note for the user:** scripts using the removed functions stop working, so ask whether this is a
 > MAJOR bump (2.0.0) before `npm version`.
@@ -123,9 +130,9 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 50 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
+| `npm test` | 53 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
-| `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 4 cases (dfs, network, edge, sizes) | open in Chrome: title says `17019 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
+| `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 5 cases (dfs, network, edge, sizes, stretch) | open in Chrome: title says `18933 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
 
 - `check:animated --web` writes `web/_check.html` instead (served by `npm start`, handy for browser
   automation; it's git-ignored, delete it afterwards). The check must run after page load: SMIL

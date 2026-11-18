@@ -163,7 +163,8 @@ input[type=number] { width: 4.5em; }
 .arrange button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 .arrange svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .arrange .gap { width: 1px; margin: 4px 3px; background: var(--border); }
-.size-input { width: 4.8em; }
+.size-fields { display: inline-flex; align-items: center; gap: 6px; }
+.size-fields input { width: 4.4em; }
 
 /* ---------- Behaviour ---------- */
 .subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 8px 0 4px; }

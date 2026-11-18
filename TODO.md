@@ -6,11 +6,12 @@ Usability work is judged by how well it serves those three.
 ## Now: lasso, size and editing comforts (done, not released)
 
 - [x] Removed tidy tree, push, simulate/rules, Let it move and their examples (user's decision).
-- [x] `size()` in Lua, Steps and on the Stage; resize handle; shows in frames, animated SVG, MP4.
+- [x] `size()` in Lua, Steps and on the Stage, width and height apart; handles; frames, animated SVG, MP4.
+- [x] Free-hand lasso; align without overlaps; colours on the Stage; SVG buttons open a tab.
 - [x] Lasso, Ctrl-click, select all, group move, delete/remove, duplicate, copy/paste, align/spread, nudge, grid.
 - [x] Undo/redo and autosave; New project.
 - [ ] Ask the user which version to release (breaking for scripts using the removed functions).
-- [ ] Ideas: rotate, z-order (bring to front), lasso that also catches lines crossing the box, colour on the Stage.
+- [ ] Ideas: rotate, z-order (bring to front), lasso that also catches lines crossing it.
 
 *(Everything below is the v1.1.0 plan and history; its tree_layout, push and simulate items were removed.)*
 

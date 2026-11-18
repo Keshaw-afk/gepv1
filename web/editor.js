@@ -3,14 +3,15 @@
 //   'behaviour'  shows the picture after the steps (this.view); every edit becomes a step through
 //                the callbacks (record moves, add an object, connect two, resize), the stage is untouched.
 // One tool is active at a time (see TOOLS): select, a shape, or line/arrow. Drag on empty space with
-// any tool to lasso several objects; Ctrl/Cmd-click adds or removes one; a selected object shows a
-// handle in its corner to change its size.
+// any tool to draw a free-hand loop around several objects (lasso); Ctrl/Cmd-click adds or removes one.
+// A selected object shows handles: right edge = width, bottom edge = height, corner = both (Shift keeps
+// the proportions).
 // All model logic lives in core/; this file only turns pointer events into edits and re-renders.
 
 import { Scene, CANVAS, GRID } from '../core/scene.js';
 import { sceneToState } from '../core/player.js';
 import { renderSVG } from '../core/svg.js';
-import { halfSize, hits, SHAPES, SIZE } from '../core/shapes.js';
+import { halfSize, hits, SHAPES, SIZE, sizeOf, sameSize } from '../core/shapes.js';
 import { arrange } from '../core/arrange.js';
 
 export const TOOLS = ['select', ...SHAPES, 'line', 'arrow'];
@@ -19,6 +20,32 @@ const isShape = (tool) => SHAPES.includes(tool);
 const isLink = (tool) => tool === 'line' || tool === 'arrow';
 const LASSO_AFTER = 4; // canvas units a press has to travel before it is a lasso and not a click
 const snapTo = (v) => Math.round(v / GRID) * GRID;
+const roundSize = (v) => clamp(Math.round(v * 20) / 20, SIZE.min, SIZE.max);
+
+/**
+ * The area a lasso drag selects: the loop itself, or, when the drag is nearly a straight stroke (it
+ * encloses almost nothing), the box between its ends, so a quick diagonal drag still selects.
+ */
+export function lassoRegion(path) {
+  if (path.length < 2) return [];
+  const xs = path.map((p) => p.x), ys = path.map((p) => p.y);
+  const box = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  let area = 0;
+  for (let i = 0, j = path.length - 1; i < path.length; j = i++) area += (path[j].x + path[i].x) * (path[j].y - path[i].y);
+  if (Math.abs(area / 2) >= 0.25 * box) return path;
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+}
+
+/** Is point p inside the polygon (a list of points)? Even-odd rule. */
+function insidePolygon(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
 
 /** Keeps a shape's centre where the whole shape stays on the canvas. */
 export function keepInside(shape, label, x, y, size = 1) {
@@ -48,9 +75,9 @@ export class Editor {
    * onRecordMoves(moves)         behaviour: nodes were dragged or arranged: [{id, x, y}]
    * onAddObject(shape, label, x, y)  behaviour: a shape tool clicked empty space
    * onConnect(a, b, directed)    behaviour: line/arrow dragged from node to node
-   * onResize(list)               behaviour: sizes changed: [{id, size}]
-   * onPaste(plan)                behaviour: paste a copy; plan = {nodes: [{shape, label, x, y, size}],
-   *                              edges: [{a, b, directed}]} (a, b are indexes into nodes); returns the new ids
+   * onResize(list)               behaviour: sizes changed: [{id, size: {w, h}}]
+   * onPaste(plan)                behaviour: paste a copy; plan = {nodes: [{shape, label, x, y, size, color}],
+   *                              edges: [{a, b, directed, color}]} (a, b are indexes into nodes); returns the new ids
    * onTool(tool)                 the tool changed
    */
   constructor(container, callbacks) {
@@ -124,7 +151,7 @@ export class Editor {
     }
     this.el.innerHTML = renderSVG(state, {
       interactive: true, selected: this.sel, handle: !d || d.mode === 'resize', ghost: d?.ghost, fresh: this.fresh,
-      lasso: d?.mode === 'lasso' ? d.rect : null, grid: this.snap,
+      lasso: d?.mode === 'lasso' ? lassoRegion(d.path) : null, grid: this.snap,
       trails: this.mode === 'behaviour' ? this.trails : null,
     });
   }
@@ -213,10 +240,11 @@ export class Editor {
     this.el.setPointerCapture(e.pointerId);
     const additive = e.ctrlKey || e.metaKey;
 
-    if (e.target.closest?.('[data-handle]') && this.selected !== null) {
+    const grip = e.target.closest?.('[data-handle]')?.dataset.handle;
+    if (grip && this.selected !== null) {
       const nd = this.lookup(this.selected);
       if (nd?.kind === 'node') {
-        this.drag = { mode: 'resize', id: nd.id, size: nd.size ?? 1 };
+        this.drag = { mode: 'resize', id: nd.id, grip, size: sizeOf(nd.size), start: sizeOf(nd.size) };
         return;
       }
     }
@@ -240,7 +268,7 @@ export class Editor {
       if (additive) this.toggle(id); else this.select(id); // a line
     } else if (e.button === 0) {
       // empty space: a click adds a shape (or clears the selection), a drag is a lasso
-      this.drag = { mode: 'empty', p0: p, additive: additive || e.shiftKey, base: new Set(this.sel), rect: { x1: p.x, y1: p.y, x2: p.x, y2: p.y } };
+      this.drag = { mode: 'empty', p0: p, additive: additive || e.shiftKey, base: new Set(this.sel), path: [p] };
     }
   }
 
@@ -269,9 +297,17 @@ export class Editor {
       }
     } else if (d.mode === 'resize') {
       const nd = this.lookup(d.id);
-      const h1 = halfSize(nd.shape ?? 'circle', nd.label, 1);
-      const raw = ((p.x - nd.x - 3) / h1.x + (p.y - nd.y - 3) / h1.y) / 2;
-      d.size = clamp(Math.round(raw * 20) / 20, SIZE.min, SIZE.max);
+      const shape = nd.shape ?? 'circle';
+      const h1 = halfSize(shape, nd.label, 1);
+      const w = (p.x - nd.x - 8) / h1.x, h = (p.y - nd.y - 8) / h1.y; // the handles sit 8 px outside the edge
+      if (d.grip === 'w') d.size = { w: roundSize(w), h: d.start.h };
+      else if (d.grip === 'h') d.size = { w: d.start.w, h: roundSize(h) };
+      else if (e.shiftKey || shape === 'text') {
+        // keep the proportions: follow the pointer along the corner's diagonal
+        const k = Math.max(w / d.start.w, h / d.start.h);
+        const lim = Math.min(SIZE.max / Math.max(d.start.w, d.start.h), Math.max(k, SIZE.min / Math.min(d.start.w, d.start.h)));
+        d.size = { w: roundSize(d.start.w * lim), h: roundSize(d.start.h * lim) };
+      } else d.size = { w: roundSize(w), h: roundSize(h) };
       if (this.mode === 'stage') {
         const o = this.scene.get(d.id);
         o.size = d.size;
@@ -281,20 +317,22 @@ export class Editor {
         this.render();
       }
     } else if (d.mode === 'empty' || d.mode === 'lasso') {
-      Object.assign(d.rect, { x2: p.x, y2: p.y });
+      const last = d.path.at(-1);
+      if (Math.hypot(p.x - last.x, p.y - last.y) >= 3) d.path.push(p);
       if (d.mode === 'empty' && Math.hypot(p.x - d.p0.x, p.y - d.p0.y) > LASSO_AFTER) d.mode = 'lasso';
       if (d.mode === 'lasso') {
-        this.sel = new Set([...(d.additive ? d.base : []), ...this.insideLasso(d.rect)]);
+        this.sel = new Set([...(d.additive ? d.base : []), ...this.insideLasso(d.path)]);
         this.render();
       }
     }
   }
 
-  /** Ids inside the lasso: nodes whose centre is in it, and the lines between two such nodes. */
-  insideLasso(r) {
-    const [x0, x1] = [Math.min(r.x1, r.x2), Math.max(r.x1, r.x2)], [y0, y1] = [Math.min(r.y1, r.y2), Math.max(r.y1, r.y2)];
+  /** Ids inside the free-hand loop: nodes whose centre is in it, and the lines between two such nodes. */
+  insideLasso(path) {
+    path = lassoRegion(path);
+    if (path.length < 3) return [];
     const st = this.state();
-    const nodes = new Set(st.nodes.filter((n) => n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1).map((n) => n.id));
+    const nodes = new Set(st.nodes.filter((n) => insidePolygon(n, path)).map((n) => n.id));
     return [...nodes, ...st.edges.filter((e) => nodes.has(e.a) && nodes.has(e.b)).map((e) => e.id)];
   }
 
@@ -311,7 +349,7 @@ export class Editor {
     } else if (d.mode === 'move') {
       this.render();
     } else if (d.mode === 'resize') {
-      if (this.mode === 'behaviour' && d.size !== (this.lookup(d.id)?.size ?? 1)) this.onResize?.([{ id: d.id, size: d.size }]);
+      if (this.mode === 'behaviour' && !sameSize(d.size, this.lookup(d.id)?.size ?? 1)) this.onResize?.([{ id: d.id, size: d.size }]);
       else this.render();
     } else if (d.mode === 'lasso') {
       this.setSelection([...this.sel]);
@@ -366,21 +404,34 @@ export class Editor {
     this.changed();
   }
 
-  /** Sets the size of every selected node (the stage changes now; Behaviour asks the page for steps). */
-  setSize(size) {
-    const s = clamp(Math.round(size * 100) / 100, SIZE.min, SIZE.max);
+  /**
+   * Sets the width and/or height factor of every selected node: change = { w?, h? } (a text shape takes
+   * either for both). The stage changes now; Behaviour asks the page for steps.
+   */
+  setSize(change) {
+    const r = (v) => clamp(Math.round(v * 100) / 100, SIZE.min, SIZE.max);
     const nodes = this.selectedNodes();
     if (!nodes.length) return;
-    if (this.mode === 'behaviour') {
-      const changed = nodes.filter((n) => (n.size ?? 1) !== s);
-      if (changed.length) this.onResize?.(changed.map((n) => ({ id: n.id, size: s })));
-      return;
-    }
-    for (const n of nodes) {
+    const next = (n) => {
+      const z = sizeOf(n.size);
+      if (n.shape === 'text') { const v = r(change.w ?? change.h); return { w: v, h: v }; }
+      return { w: change.w === undefined ? z.w : r(change.w), h: change.h === undefined ? z.h : r(change.h) };
+    };
+    const changed = nodes.map((n) => ({ n, size: next(n) })).filter(({ n, size }) => !sameSize(n.size, size));
+    if (!changed.length) return;
+    if (this.mode === 'behaviour') { this.onResize?.(changed.map(({ n, size }) => ({ id: n.id, size }))); return; }
+    for (const { n, size } of changed) {
       const o = this.scene.get(n.id);
-      o.size = s;
-      Object.assign(o, keepInside(o.shape, o.label, o.x, o.y, s));
+      o.size = size;
+      Object.assign(o, keepInside(o.shape, o.label, o.x, o.y, size));
     }
+    this.changed();
+  }
+
+  /** Stage only: colour every selected object (Behaviour makes colour steps instead). */
+  setColor(color) {
+    if (this.mode !== 'stage' || !this.sel.size) return;
+    for (const id of this.sel) { const o = this.scene.get(id); if (o) o.color = color; }
     this.changed();
   }
 
@@ -408,8 +459,8 @@ export class Editor {
     if (!nodes.length) return 0;
     const index = new Map(nodes.map((n, i) => [n.id, i]));
     this.clipboard = {
-      nodes: nodes.map(({ shape, label, x, y, size }) => ({ shape: shape ?? 'circle', label, x, y, size: size ?? 1 })),
-      edges: this.state().edges.filter((e) => index.has(e.a) && index.has(e.b)).map((e) => ({ a: index.get(e.a), b: index.get(e.b), directed: !!e.directed })),
+      nodes: nodes.map(({ shape, label, x, y, size, color }) => ({ shape: shape ?? 'circle', label, x, y, size: sizeOf(size), color })),
+      edges: this.state().edges.filter((e) => index.has(e.a) && index.has(e.b)).map((e) => ({ a: index.get(e.a), b: index.get(e.b), directed: !!e.directed, color: e.color })),
       pastes: 0,
     };
     return nodes.length;
@@ -429,6 +480,8 @@ export class Editor {
     }
     const ids = plan.nodes.map((n) => this.scene.addNode(n.label, n.x, n.y, n.shape, n.size));
     const edges = plan.edges.map((e) => this.scene.addEdge(ids[e.a], ids[e.b], e.directed));
+    plan.nodes.forEach((n, i) => { if (n.color) this.scene.get(ids[i]).color = n.color; });
+    plan.edges.forEach((e, i) => { if (e.color) this.scene.get(edges[i]).color = e.color; });
     this.setSelection([...ids, ...edges]);
     this.changed();
   }

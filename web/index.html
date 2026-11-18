@@ -71,9 +71,10 @@
           <button class="dup" type="button" disabled title="A copy of the selection, next to it (Ctrl+D)">Duplicate</button>
           <button class="del danger" type="button" disabled title="Delete the selection (Delete)">Delete</button>
         </div>
+        <div id="stage-palette" class="palette" aria-label="colour"></div>
         <div class="toolbar">
           <label>Label <input id="label" type="text" disabled autocomplete="off"></label>
-          <label>Size <input class="size-input" type="number" min="0.25" max="5" step="0.05" disabled></label>
+          <span class="size-fields" title="Size: 1 is normal, 2 is twice as wide or tall">Size <label>W <input class="size-w" type="number" min="0.25" max="5" step="0.05" disabled aria-label="width factor"></label> <label>H <input class="size-h" type="number" min="0.25" max="5" step="0.05" disabled aria-label="height factor"></label></span>
         </div>
         <div class="toolbar"><span class="arrange" data-arrange></span></div>
         <div class="toolbar">
@@ -101,7 +102,7 @@
           <p id="target" class="hint">Click an object, then pick a colour. Drag to record a move. Shape tools add objects.</p>
           <div id="palette" class="palette" aria-label="colour"></div>
           <div class="toolbar actions">
-            <label>Size <input class="size-input" type="number" min="0.25" max="5" step="0.05" disabled></label>
+            <span class="size-fields" title="Size: 1 is normal, 2 is twice as wide or tall">Size <label>W <input class="size-w" type="number" min="0.25" max="5" step="0.05" disabled aria-label="width factor"></label> <label>H <input class="size-h" type="number" min="0.25" max="5" step="0.05" disabled aria-label="height factor"></label></span>
             <span class="arrange" data-arrange></span>
           </div>
           <div class="toolbar actions">
@@ -145,9 +146,9 @@
           </div>
           <textarea id="script" spellcheck="false" wrap="off" aria-label="script.lua"></textarea>
           <p class="hint api">
-            <code>node(label, x, y, size?)</code> <code>rect</code> <code>triangle</code> <code>text</code>
+            <code>node(label, x, y, w?, h?)</code> <code>rect</code> <code>triangle</code> <code>text</code>
             <code>edge(a, b)</code> <code>arrow(a, b)</code> <code>color(id, c, dur?)</code>
-            <code>move(id, x, y, dur?, "smooth"?)</code> <code>size(id, s, dur?, "smooth"?)</code>
+            <code>move(id, x, y, dur?, "smooth"?)</code> <code>size(id, w, h, dur?, "smooth"?)</code>
             <code>remove(id)</code> <code>wait(t)</code>
             <code>pos(id)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
           </p>
@@ -161,8 +162,8 @@
         <h2>Get the animation</h2>
         <div class="downloads">
           <button id="dl-mp4" type="button" class="primary" title="Video file, encoded by ffmpeg">MP4 video</button>
-          <button id="dl-svg" type="button" title="One .svg file that plays the animation in any browser">Animated SVG</button>
-          <button id="dl-frame" type="button" title="The frame shown above, as a still .svg">This frame</button>
+          <button id="dl-svg" type="button" title="Opens in a new tab and plays there; save it from that tab (Ctrl+S)">Animated SVG ↗</button>
+          <button id="dl-frame" type="button" title="Opens the frame shown above as a still SVG in a new tab; save it from there (Ctrl+S)">This frame ↗</button>
         </div>
         <p id="export-status" class="hint"></p>
         <details id="moments-details" open>

@@ -15,7 +15,7 @@
 import { CANVAS, GRID } from './scene.js';
 import { contrastText, parseColor, toHex } from './colors.js';
 import { DEFAULT_OUTPUT } from './output.js';
-import { RADIUS, FONT_SIZE, halfSize, labelDy, outline, defaultColor } from './shapes.js';
+import { RADIUS, FONT_SIZE, halfSize, labelDy, outline, defaultColor, sizeOf, labelScale, isUniform } from './shapes.js';
 
 export const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 export const n = (v) => Math.round(v * 100) / 100;
@@ -95,8 +95,17 @@ export function backgroundRect(o, exported) {
 
 export const translate = (x, y) => `translate(${n(x)} ${n(y)})`;
 export const n3 = (v) => Math.round(v * 1000) / 1000;
-/** Where an object goes: its centre, scaled about the centre when it isn't normal size. */
-export const placement = (x, y, size = 1) => `${translate(x, y)}${size && size !== 1 ? ` scale(${n3(size)})` : ''}`;
+/**
+ * Where an object goes: its centre, scaled about the centre when it is bigger or smaller the same
+ * both ways. A shape stretched more one way than the other scales its outline (outlineScale) and,
+ * by the smaller factor, its label (labelTransform), so the label never stretches.
+ */
+export const placement = (x, y, size = 1) => {
+  const z = sizeOf(size);
+  return `${translate(x, y)}${z.w === z.h && z.w !== 1 ? ` scale(${n3(z.w)})` : ''}`;
+};
+export const outlineScale = (size) => { const z = sizeOf(size); return z.w === z.h ? '' : ` transform="scale(${n3(z.w)} ${n3(z.h)})"`; };
+export const labelTransform = (size) => (isUniform(size) || labelScale(size) === 1 ? '' : ` transform="scale(${n3(labelScale(size))})"`);
 /** An arrow's points: start, middle (where the arrowhead sits), end. */
 export const arrowPoints = (a, b) => `${n(a.x)},${n(a.y)} ${n((a.x + b.x) / 2)},${n((a.y + b.y) / 2)} ${n(b.x)},${n(b.y)}`;
 /** Text colour on a shape: black or white for contrast; a text shape is coloured itself. */
@@ -118,8 +127,8 @@ function arrowheadPolygon(a, b, color) {
  * opts.comment     a comment at the top, e.g. which frame this is (export)
  * opts.selected    id, or a Set / array of ids, to highlight (editor)
  * opts.grid        faint dots at the snap points (editor)
- * opts.handle      show a resize handle on the one selected node (editor)
- * opts.lasso       {x1, y1, x2, y2} the rectangle being dragged to select several (editor)
+ * opts.handle      show the resize handles (width, height, corner) of the one selected node (editor)
+ * opts.lasso       [{x, y}, …] the free-hand loop being drawn to select several (editor)
  * opts.interactive add data-id attributes and wide invisible hit areas (editor)
  * opts.ghost       {x1, y1, x2, y2} dashed line while dragging out a new edge (editor)
  * opts.fresh       id of an object that just appeared (editor: it pops in)
@@ -178,42 +187,49 @@ export function renderSVG(state, opts = {}) {
     const label = esc(nd.label);
     if (ex) {
       const lines = [`<g id="${esc(ids.get(nd.id))}" class="node ${shape}" transform="${placement(nd.x, nd.y, nd.size)}">`];
-      if (shape !== 'text') lines.push(`  ${outline(shape, ` fill="${fill}"`)}`);
-      lines.push(`  <text y="${dy}" fill="${labelFill(shape, nd.color)}">${label}</text>`, '</g>');
+      if (shape !== 'text') lines.push(`  ${outline(shape, ` fill="${fill}"${outlineScale(nd.size)}`)}`);
+      lines.push(`  <text y="${dy}"${labelTransform(nd.size)} fill="${labelFill(shape, nd.color)}">${label}</text>`, '</g>');
       body.push(...lines);
       continue;
     }
     const data = opts.interactive ? ` data-id="${nd.id}"` : '';
     const cls = opts.fresh === nd.id ? ' class="pop"' : '';
     const parts = [];
+    const uniform = isUniform(nd.size);
     if (sel.has(nd.id)) {
-      const h = halfSize(shape, nd.label);
+      // inside a uniformly scaled group the ring is drawn at normal size; otherwise at the real size
+      const h = halfSize(shape, nd.label, uniform ? 1 : nd.size);
       parts.push(shape === 'circle'
-        ? `<circle r="${RADIUS + 6}" fill="none" stroke="#4f8ef7" stroke-width="3"/>`
-        : `<rect x="${-h.x - 6}" y="${-h.y - 6}" width="${2 * h.x + 12}" height="${2 * h.y + 12}" rx="8" fill="none" stroke="#4f8ef7" stroke-width="3"/>`);
+        ? `<ellipse rx="${n(h.x + 6)}" ry="${n(h.y + 6)}" fill="none" stroke="#4f8ef7" stroke-width="3"/>`
+        : `<rect x="${n(-h.x - 6)}" y="${n(-h.y - 6)}" width="${n(2 * h.x + 12)}" height="${n(2 * h.y + 12)}" rx="8" fill="none" stroke="#4f8ef7" stroke-width="3"/>`);
     }
     if (shape === 'text') {
       const h = halfSize(shape, nd.label);
-      if (opts.interactive) parts.push(`<rect x="${-h.x}" y="${-h.y}" width="${2 * h.x}" height="${2 * h.y}" fill="transparent"${data}/>`);
+      if (opts.interactive) parts.push(`<rect x="${-h.x}" y="${-h.y}" width="${2 * h.x}" height="${2 * h.y}" fill="transparent"${labelTransform(nd.size)}${data}/>`);
     } else {
-      parts.push(outline(shape, ` fill="${fill}" stroke="#333333" stroke-width="2"${data}`));
+      parts.push(outline(shape, ` fill="${fill}" stroke="#333333" stroke-width="2"${outlineScale(nd.size)}${data}`));
     }
-    parts.push(`<text y="${dy}" text-anchor="middle" font-family="${o.font}" font-size="${FONT_SIZE}" font-weight="bold" fill="${labelFill(shape, nd.color)}" pointer-events="none">${label}</text>`);
+    parts.push(`<text y="${dy}"${labelTransform(nd.size)} text-anchor="middle" font-family="${o.font}" font-size="${FONT_SIZE}" font-weight="bold" fill="${labelFill(shape, nd.color)}" pointer-events="none">${label}</text>`);
     // the pop-in class goes on an inner group: a CSS transform on the outer one would replace its translate
     body.push(`<g transform="${placement(nd.x, nd.y, nd.size)}">${cls ? `<g${cls}>${parts.join('')}</g>` : parts.join('')}</g>`);
   }
 
-  // editor furniture, drawn on top at a constant size: the resize handle and the lasso
+  // editor furniture, drawn on top at a constant size: the resize handles and the lasso
   if (opts.handle && sel.size === 1) {
     const nd = byId.get([...sel][0]);
     if (nd) {
-      const h = halfSize(nd.shape ?? 'circle', nd.label, nd.size ?? 1);
-      body.push(`<rect x="${n(nd.x + h.x + 3)}" y="${n(nd.y + h.y + 3)}" width="11" height="11" rx="2" fill="#ffffff" stroke="#4f8ef7" stroke-width="2" data-handle="resize" style="cursor:nwse-resize"/>`);
+      const shape = nd.shape ?? 'circle';
+      const h = halfSize(shape, nd.label, nd.size ?? 1);
+      const handle = (x, y, kind, cursor, round) => `<rect x="${n(x - 5.5)}" y="${n(y - 5.5)}" width="11" height="11" rx="${round ? 5.5 : 2}" fill="#ffffff" stroke="#4f8ef7" stroke-width="2" data-handle="${kind}" style="cursor:${cursor}"/>`;
+      if (shape !== 'text') { // a text shape is only its label, which never stretches
+        body.push(handle(nd.x + h.x + 8, nd.y, 'w', 'ew-resize', true), handle(nd.x, nd.y + h.y + 8, 'h', 'ns-resize', true));
+      }
+      body.push(handle(nd.x + h.x + 8, nd.y + h.y + 8, 'corner', 'nwse-resize', false));
     }
   }
-  if (opts.lasso) {
-    const l = opts.lasso;
-    body.push(`<rect x="${n(Math.min(l.x1, l.x2))}" y="${n(Math.min(l.y1, l.y2))}" width="${n(Math.abs(l.x2 - l.x1))}" height="${n(Math.abs(l.y2 - l.y1))}" fill="#4f8ef7" fill-opacity="0.08" stroke="#4f8ef7" stroke-width="1.5" stroke-dasharray="5 4" pointer-events="none"/>`);
+  if (opts.lasso?.length > 1) {
+    const d = opts.lasso.map((p, i) => `${i ? 'L' : 'M'}${n(p.x)} ${n(p.y)}`).join(' ');
+    body.push(`<path d="${d} Z" fill="#4f8ef7" fill-opacity="0.08" stroke="#4f8ef7" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" pointer-events="none"/>`);
   }
 
   out.push(...(ex ? body.map((l) => '  ' + l) : body), '</svg>');
