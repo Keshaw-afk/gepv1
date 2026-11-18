@@ -13,24 +13,28 @@ export const RECT = { w: 64, h: 40, rx: 6 };    // rect
 export const TRIANGLE = '0,-30 28,18 -28,18';   // triangle points (centroid near the origin)
 export const FONT_SIZE = 17;
 
+/** Size is a scale factor: 1 is the normal size, 2 is twice as big. */
+export const SIZE = { min: 0.25, max: 5, default: 1 };
+
 /** Default fill: grey shapes, dark text (a grey caption would be hard to read). */
 export const defaultColor = (shape) => (shape === 'text' ? '#333333' : '#cccccc');
 
 /** Where the label's baseline sits, relative to the centre. */
 export const labelDy = (shape) => (shape === 'triangle' ? 12 : 6);
 
-/** Half the width and height of a shape: for hit tests and keeping it inside the canvas. */
-export function halfSize(shape, label = '') {
-  if (shape === 'rect') return { x: RECT.w / 2, y: RECT.h / 2 };
-  if (shape === 'triangle') return { x: 28, y: 30 };
-  if (shape === 'text') return { x: Math.max(12, String(label).length * 5), y: 11 };
-  return { x: RADIUS, y: RADIUS };
+/** Half the width and height of a shape at this size: for hit tests and keeping it on the canvas. */
+export function halfSize(shape, label = '', size = 1) {
+  let h = { x: RADIUS, y: RADIUS };
+  if (shape === 'rect') h = { x: RECT.w / 2, y: RECT.h / 2 };
+  else if (shape === 'triangle') h = { x: 28, y: 30 };
+  else if (shape === 'text') h = { x: Math.max(12, String(label).length * 5), y: 11 };
+  return { x: h.x * size, y: h.y * size };
 }
 
 /** Is point p inside the shape centred at (x, y)? */
-export function hits(shape, label, x, y, p) {
-  if (shape === 'circle') return Math.hypot(p.x - x, p.y - y) <= RADIUS;
-  const h = halfSize(shape, label);
+export function hits(shape, label, x, y, p, size = 1) {
+  if (shape === 'circle') return Math.hypot(p.x - x, p.y - y) <= RADIUS * size;
+  const h = halfSize(shape, label, size);
   return Math.abs(p.x - x) <= h.x && Math.abs(p.y - y) <= h.y;
 }
 

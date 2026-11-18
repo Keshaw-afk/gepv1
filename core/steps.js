@@ -4,12 +4,10 @@
 // A step is one of
 //   { op: 'color',   target, color, dur, together }
 //   { op: 'move',    target, x, y, dur, together }
-//   { op: 'add',     id, shape, label, x, y, together }    a new object appears
+//   { op: 'size',    target, size, dur, together }         scale an object (1 = normal size)
+//   { op: 'add',     id, shape, label, x, y, size?, together }  a new object appears
 //   { op: 'connect', id, a, b, directed, together }        a new line or arrow appears
 //   { op: 'remove',  target, together }                    an object disappears (a node takes its lines)
-//   { op: 'tidy',    target, dur, together }               tree_layout from that node
-//   { op: 'push',    target, vx, vy, together }            give a node a velocity (px/s)
-//   { op: 'simulate', rule, dur }                          let it move: simulate(dur, rule)
 //   { op: 'wait',    dur }
 // target, a and b are object ids: numbers for stage objects, 's1', 's2', … for objects that steps
 // create (so the two never clash). dur is in ms. Steps play one after another, except that a step
@@ -18,11 +16,12 @@
 import { variableNames, luaString, isUsableName, SHAPE_CALL } from './stage_file.js';
 
 /** Steps that happen at once (no duration). */
-export const INSTANT = new Set(['add', 'connect', 'remove', 'push']);
+export const INSTANT = new Set(['add', 'connect', 'remove']);
 /** Steps that let time run on their own: nothing plays "with" them. */
-export const RUNS_TIME = new Set(['wait', 'simulate']);
+export const RUNS_TIME = new Set(['wait']);
 
 const sec = (ms) => String(Number((ms / 1000).toFixed(3)));
+const num = (v) => String(Number(v.toFixed(3)));
 
 /** The next free id for an object created by a step. */
 export function nextStepId(steps) {
@@ -49,7 +48,7 @@ function walk(steps, scene) {
   for (const s of steps) {
     let ok = true;
     if (s.op === 'add') {
-      objects.set(s.id, { id: s.id, kind: 'node', label: s.label, shape: s.shape });
+      objects.set(s.id, { id: s.id, kind: 'node', label: s.label, shape: s.shape, size: s.size });
       alive.add(s.id);
     } else if (s.op === 'connect') {
       ok = isNode(s.a) && isNode(s.b) && s.a !== s.b && !connected(s.a, s.b);
@@ -65,7 +64,7 @@ function walk(steps, scene) {
         }
         alive.delete(s.target);
       }
-    } else if (s.op === 'move' || s.op === 'tidy' || s.op === 'push') {
+    } else if (s.op === 'move' || s.op === 'size') {
       ok = isNode(s.target);
     } else if (s.op === 'color') {
       ok = alive.has(s.target);
@@ -129,11 +128,10 @@ export function buildSteps(steps, scene) {
     switch (s.op) {
       case 'color': return `color(${ref(s.target)}, ${luaString(s.color)}, ${sec(s.dur)})`;
       case 'move': return `move(${ref(s.target)}, ${Math.round(s.x)}, ${Math.round(s.y)}, ${sec(s.dur)})`;
-      case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${Math.round(s.x)}, ${Math.round(s.y)})`;
+      case 'size': return `size(${ref(s.target)}, ${num(s.size)}, ${sec(s.dur)})`;
+      case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${Math.round(s.x)}, ${Math.round(s.y)}${s.size && s.size !== 1 ? `, ${num(s.size)}` : ''})`;
       case 'connect': return `${s.directed ? 'arrow' : 'edge'}(${names.get(s.a)}, ${names.get(s.b)})`;
       case 'remove': return `remove(${ref(s.target)})`;
-      case 'tidy': return `tree_layout(${ref(s.target)}, ${sec(s.dur)})`;
-      case 'push': return `push(${ref(s.target)}, ${Math.round(s.vx)}, ${Math.round(s.vy)})`;
     }
     throw new Error(`unknown step '${s.op}'`);
   };
@@ -151,10 +149,10 @@ export function buildSteps(steps, scene) {
   };
 
   for (const [i, s] of steps.entries()) {
-    // a pause and "let it move" let time run themselves: each is a line of its own
-    if (s.op === 'wait' || s.op === 'simulate') {
+    // a pause lets time run by itself: it is a line of its own
+    if (s.op === 'wait') {
       flush();
-      lines.push(s.op === 'wait' ? `wait(${sec(s.dur)})` : `simulate(${sec(s.dur)}${s.rule === 'drift' ? '' : `, ${luaString(s.rule)}`})`);
+      lines.push(`wait(${sec(s.dur)})`);
       stepAtLine.push(i);
       continue;
     }
@@ -167,23 +165,6 @@ export function buildSteps(steps, scene) {
 }
 
 export const stepsToLua = (steps, scene) => buildSteps(steps, scene).code;
-
-// A push from the GUI: the user drags from an object to where it should be when the "let it move"
-// after it ends. push() only gives a speed and takes no time, so the push brings a "let it move"
-// (drift, durMs) with it, and its speed is the drag divided by that step's length: the object lands
-// where the drag ended, then keeps its speed for later rules. Pushes made one after another share
-// one "let it move", so they move together. Both are ordinary steps the user can change or delete.
-//   drag: { target, dx, dy } in px; returns the new step list and the push step
-export function addPush(steps, { dx, dy, ...push }, durMs) {
-  const last = steps.at(-1);
-  const shared = last?.op === 'simulate' && steps.at(-2)?.op === 'push';
-  const sec = (shared ? last.dur : durMs) / 1000;
-  const step = { together: false, ...push, op: 'push', vx: dx / sec, vy: dy / sec };
-  return {
-    steps: shared ? [...steps.slice(0, -1), step, last] : [...steps, step, { op: 'simulate', rule: 'drift', dur: durMs, together: false }],
-    push: step,
-  };
-}
 
 /**
  * Running the program numbers objects 1..n in the order it creates them, while the editor has its

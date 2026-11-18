@@ -11,6 +11,7 @@ import { renderFrame, landmarks } from '../core/frames.js';
 import { formatTrace } from '../core/trace.js';
 import { outputSettings } from '../core/output.js';
 import { ease } from '../core/easing.js';
+import { halfSize, hits } from '../core/shapes.js';
 
 const SHAPES = 'C = node("C", 100, 100) R = rect("R", 200, 100) T = triangle("T", 300, 100) X = text("Hello", 400, 100) edge(C, R) arrow(R, T)';
 
@@ -89,22 +90,6 @@ test('pos() tells a script where a node is now, also halfway through a move', ()
   assert.deepEqual(r.log, ['0.0\t0.0', '50.0\t25.0', '100.0\t50.0']);
 });
 
-test('tree_layout: tidy positions; a single child keeps its side, as in a binary search tree', () => {
-  // 50 has children 30 (left) and 70 (right); 30 has only a right child 40; 70 has only a left child 60
-  const r = run(`
-    a = node("50", 300, 50) b = node("30", 100, 200) c = node("70", 500, 200) d = node("40", 200, 300) e = node("60", 400, 300)
-    edge(a, b) edge(a, c) edge(b, d) edge(c, e)`, 'tree_layout(a); wait(0.5)');
-  const at = Object.fromEntries(sceneAt(r.timeline, r.timeline.durationMs).nodes.map((n) => [n.label, n]));
-  assert.ok(at['30'].x < at['50'].x && at['50'].x < at['70'].x, 'children left to right');
-  assert.ok(at['40'].x > at['30'].x, '40 stays right of 30');
-  assert.ok(at['60'].x < at['70'].x, '60 stays left of 70');
-  assert.ok(at['30'].y === at['70'].y && at['40'].y === at['60'].y && at['40'].y > at['30'].y, 'levels');
-  assert.equal(at['50'].y, 50, 'the tree keeps its top');
-  // the moves are smooth and start together
-  const moves = r.timeline.commands.filter((c) => c.op === 'set');
-  assert.ok(moves.length >= 4 && moves.every((m) => m.ease === 'smooth' && m.t === 0));
-});
-
 test('positionsOf agrees with sceneAt, including eased moves that start mid-move', () => {
   const r = run('A = node("A", 0, 0)', 'move(A, 100, 0, 1, "smooth"); wait(0.3); move(A, 0, 80, 1); wait(1)');
   const pos = positionsOf(r.timeline);
@@ -125,4 +110,32 @@ test('animated SVG: an arrow follows its ends, also when an end jumps (a move wi
   assert.equal(keys[k + 1], 0.5, 'a jump: two values at the same time');
   assert.ok(values[k].startsWith('200,') && values[k + 1].startsWith('0,0'));
   assert.equal(values.at(-1), '0,0 50,50 100,100');
+});
+
+test('size: a scale about the centre, in frames, the stage file, hit tests and the animated SVG', () => {
+  const r = run('A = node("A", 100, 100, 2) B = rect("B", 300, 100)', 'size(B, 3, 1, "smooth"); wait(1); size(A, 0.5, 0); wait(0.5)');
+  const at = (t) => Object.fromEntries(sceneAt(r.timeline, t).nodes.map((n) => [n.label, n.size]));
+  assert.deepEqual(at(0), { A: 2, B: 1 });
+  assert.ok(Math.abs(at(500).B - 2) < 1e-6, 'smooth is halfway at the half');
+  assert.deepEqual(at(1000), { A: 0.5, B: 3 });
+  // the frame: a scale() only when the size isn't 1
+  const svg = renderFrame(r.timeline, [0], 0);
+  assert.match(svg, /id="A" class="node circle" transform="translate\(100 100\) scale\(2\)"/);
+  assert.match(svg, /id="B" class="node rect" transform="translate\(300 100\)">/);
+  // the stage file keeps sizes as the optional last argument
+  const s = new Scene();
+  s.addNode('A', 10, 20, 'circle', 1.5);
+  s.addNode('B', 30, 40);
+  assert.match(toStageLua(s), /A = node\("A", 10, 20, 1\.5\)\nB = node\("B", 30, 40\)\n/);
+  // geometry
+  assert.deepEqual(halfSize('rect', '', 2), { x: 64, y: 40 });
+  assert.ok(hits('circle', '', 0, 0, { x: 40, y: 0 }, 2) && !hits('circle', '', 0, 0, { x: 40, y: 0 }));
+  // the animated SVG scales an inner group, so it never fights the move animation
+  const anim = renderAnimatedSVG(r.timeline);
+  assert.match(anim, /<g transform="scale\(2\)">\s*<animateTransform attributeName="transform" type="scale" from="0.5" to="0.5" begin="1s" dur="0.001s"/);
+  assert.match(anim, /type="scale" from="1" to="3" begin="0s" dur="1s" calcMode="spline"/);
+  // bad sizes are refused with a clear message
+  assert.throws(() => run('A = node("A", 1, 1)', 'size(A, 0)'), /size must be from 0.25 to 5/);
+  assert.throws(() => run('', 'A = node("A", 1, 1, 9)'), /size must be from/);
+  assert.ok(API_NAMES.includes('size') && !API_NAMES.includes('tree_layout'));
 });

@@ -35,8 +35,10 @@
         <span class="sep" aria-hidden="true"></span>
         <button type="button" data-tool="line" title="Line: drag from one object to another (L)" aria-label="line"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5l11-11"/><circle cx="4.5" cy="15.5" r="1.6" class="dot"/><circle cx="15.5" cy="4.5" r="1.6" class="dot"/></svg></button>
         <button type="button" data-tool="arrow" title="Arrow: drag from one object to another (A)" aria-label="arrow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5l11-11M9 4.5h6.5V11"/></svg></button>
-        <span class="sep behaviour-only" aria-hidden="true"></span>
-        <button type="button" data-tool="push" class="behaviour-only" title="Push: drag from an object to where it should go; it keeps its speed after (P)" aria-label="push"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="13" r="3"/><path d="M10 9.5l6-4.5M12.5 4.8l3.5.2-.6 3.4"/><path d="M8.5 16.5h3M10 18.5h4" class="faint"/></svg></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" id="undo" title="Undo (Ctrl+Z)" aria-label="undo" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 5L4 8.5 7.5 12M4.5 8.5H12a3.5 3.5 0 010 7H9"/></svg></button>
+        <button type="button" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="redo" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 5L16 8.5 12.5 12M15.5 8.5H8a3.5 3.5 0 000 7h3"/></svg></button>
+        <button type="button" id="snap" aria-pressed="false" title="Snap to a grid (G)" aria-label="snap to grid"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h.01M10 4h.01M16 4h.01M4 10h.01M10 10h.01M16 10h.01M4 16h.01M10 16h.01M16 16h.01" stroke-width="2.6"/></svg></button>
       </div>
       <div id="editor" class="canvas editor"></div>
       <div id="preview" class="canvas" hidden></div>
@@ -62,16 +64,23 @@
     <aside class="panel">
       <div data-panel="stage">
         <h2>Set the stage</h2>
-        <p class="hint">Draw the starting picture: shapes, text, and the lines and arrows between them.</p>
+        <p class="hint">Draw the starting picture: shapes, text, and the lines and arrows between them. Your work is saved in this browser as you go.</p>
         <div class="inspector">
           <span id="selection">Nothing selected</span>
-          <label>Label <input id="label" type="text" disabled autocomplete="off"></label>
-          <button id="delete" type="button" disabled>Delete</button>
+          <span class="spacer"></span>
+          <button class="dup" type="button" disabled title="A copy of the selection, next to it (Ctrl+D)">Duplicate</button>
+          <button class="del danger" type="button" disabled title="Delete the selection (Delete)">Delete</button>
         </div>
+        <div class="toolbar">
+          <label>Label <input id="label" type="text" disabled autocomplete="off"></label>
+          <label>Size <input class="size-input" type="number" min="0.25" max="5" step="0.05" disabled></label>
+        </div>
+        <div class="toolbar"><span class="arrange" data-arrange></span></div>
         <div class="toolbar">
           <button id="load" type="button">Load…</button>
           <button id="save" type="button">Save</button>
-          <button id="clear" type="button">Clear</button>
+          <button id="clear" type="button" title="Remove everything from the stage">Clear</button>
+          <button id="new" type="button" title="Start again: empty stage, no steps, no code">New project</button>
           <input id="file" type="file" accept=".lua,text/plain" hidden>
         </div>
         <details>
@@ -92,19 +101,18 @@
           <p id="target" class="hint">Click an object, then pick a colour. Drag to record a move. Shape tools add objects.</p>
           <div id="palette" class="palette" aria-label="colour"></div>
           <div class="toolbar actions">
-            <button id="tidy" type="button" disabled title="Glide the tree below this node into tidy rows">Tidy tree</button>
-            <button id="remove-obj" type="button" class="danger" disabled title="The object disappears at this step (Delete)">Remove</button>
+            <label>Size <input class="size-input" type="number" min="0.25" max="5" step="0.05" disabled></label>
+            <span class="arrange" data-arrange></span>
+          </div>
+          <div class="toolbar actions">
             <label id="step-label-wrap" hidden>Label <input id="step-label" type="text" autocomplete="off"></label>
+            <span class="spacer"></span>
+            <button class="dup" type="button" disabled title="Adds a copy of the selection (Ctrl+D)">Duplicate</button>
+            <button class="del danger" type="button" disabled title="The selection disappears at this step (Delete)">Remove</button>
           </div>
           <div class="toolbar">
             <label>Duration <input id="dur" type="number" min="0" max="10" step="0.1" value="0.5"> s</label>
             <button id="pause" type="button">+ Pause</button>
-            <select id="simulate" aria-label="let it move" title="Let time run for 2 s while a rule moves things (change it in the step)">
-              <option value="" selected disabled>Let it move…</option>
-              <option value="drift">Drift (keep their pushes)</option>
-              <option value="spread">Spread out</option>
-              <option value="fall">Fall</option>
-            </select>
           </div>
           <p id="code-note" class="note" hidden>
             The <b>Code</b> tab also has <span id="code-count"></span> lines. They play after these steps.
@@ -130,21 +138,18 @@
               <option value="bfs.lua">Breadth-first search</option>
               <option value="packets.lua">Packets A → B → D</option>
               <option value="sort.lua">Bubble sort (empty stage)</option>
-              <option value="rotation.lua">Tree rotation (empty stage)</option>
               <option value="network.lua">Router network (empty stage)</option>
-              <option value="untangle.lua">Untangle a graph (empty stage)</option>
-              <option value="rules.lua">Push, fall, your own rule (empty stage)</option>
             </select>
             <button id="save-code" type="button" title="Download script.lua">Save</button>
             <button id="clear-code" type="button">Clear code</button>
           </div>
           <textarea id="script" spellcheck="false" wrap="off" aria-label="script.lua"></textarea>
           <p class="hint api">
-            <code>node(label, x, y)</code> <code>rect</code> <code>triangle</code> <code>text</code>
+            <code>node(label, x, y, size?)</code> <code>rect</code> <code>triangle</code> <code>text</code>
             <code>edge(a, b)</code> <code>arrow(a, b)</code> <code>color(id, c, dur?)</code>
-            <code>move(id, x, y, dur?, "smooth"?)</code> <code>remove(id)</code> <code>wait(t)</code>
-            <code>pos(id)</code> <code>tree_layout(root, dur?)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
-            <code>push(id, vx, vy)</code> <code>simulate(t, rule?, {only, target}?)</code>
+            <code>move(id, x, y, dur?, "smooth"?)</code> <code>size(id, s, dur?, "smooth"?)</code>
+            <code>remove(id)</code> <code>wait(t)</code>
+            <code>pos(id)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
           </p>
         </div>
 

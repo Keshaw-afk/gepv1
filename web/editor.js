@@ -1,39 +1,57 @@
 // GUI editor with two modes:
 //   'stage'      draw the starting picture (edits core/Scene)
 //   'behaviour'  shows the picture after the steps (this.view); every edit becomes a step through
-//                the callbacks (record a move, add an object, connect two), the stage is untouched.
-// One tool is active at a time (see TOOLS): select, a shape, or line/arrow.
+//                the callbacks (record moves, add an object, connect two, resize), the stage is untouched.
+// One tool is active at a time (see TOOLS): select, a shape, or line/arrow. Drag on empty space with
+// any tool to lasso several objects; Ctrl/Cmd-click adds or removes one; a selected object shows a
+// handle in its corner to change its size.
 // All model logic lives in core/; this file only turns pointer events into edits and re-renders.
 
-import { Scene, CANVAS } from '../core/scene.js';
+import { Scene, CANVAS, GRID } from '../core/scene.js';
 import { sceneToState } from '../core/player.js';
 import { renderSVG } from '../core/svg.js';
-import { halfSize, hits, SHAPES } from '../core/shapes.js';
+import { halfSize, hits, SHAPES, SIZE } from '../core/shapes.js';
+import { arrange } from '../core/arrange.js';
 
-export const TOOLS = ['select', ...SHAPES, 'line', 'arrow', 'push']; // push: Behaviour only
+export const TOOLS = ['select', ...SHAPES, 'line', 'arrow'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const isShape = (tool) => SHAPES.includes(tool);
 const isLink = (tool) => tool === 'line' || tool === 'arrow';
+const LASSO_AFTER = 4; // canvas units a press has to travel before it is a lasso and not a click
+const snapTo = (v) => Math.round(v / GRID) * GRID;
 
 /** Keeps a shape's centre where the whole shape stays on the canvas. */
-export function keepInside(shape, label, x, y) {
-  const h = halfSize(shape, label);
+export function keepInside(shape, label, x, y, size = 1) {
+  const h = halfSize(shape, label, size);
   return {
-    x: Math.round(clamp(x, h.x, CANVAS.width - h.x)),
-    y: Math.round(clamp(y, h.y, CANVAS.height - h.y)),
+    x: Math.round(clamp(x, h.x, Math.max(h.x, CANVAS.width - h.x))),
+    y: Math.round(clamp(y, h.y, Math.max(h.y, CANVAS.height - h.y))),
   };
+}
+
+/** How far a group of nodes can move by (dx, dy) and still stay on the canvas. */
+function fitDelta(nodes, dx, dy) {
+  let lox = -Infinity, hix = Infinity, loy = -Infinity, hiy = Infinity;
+  for (const n of nodes) {
+    const h = halfSize(n.shape ?? 'circle', n.label, n.size ?? 1);
+    lox = Math.max(lox, h.x - n.x); hix = Math.min(hix, CANVAS.width - h.x - n.x);
+    loy = Math.max(loy, h.y - n.y); hiy = Math.min(hiy, CANVAS.height - h.y - n.y);
+  }
+  return { dx: lox > hix ? 0 : clamp(dx, lox, hix), dy: loy > hiy ? 0 : clamp(dy, loy, hiy) };
 }
 
 export class Editor {
   /**
-   * onChange()                  after any stage edit
-   * onSelect(obj | null)        when the selection changes (obj has id, kind, label, shape)
-   * onRename()                  double-click on a stage node
-   * onRecordMove(id, x, y)      behaviour: a node was dragged
+   * onChange()                   after any stage edit
+   * onSelect(objs)               when the selection changes: [{id, kind, label, shape, size, …}]
+   * onRename()                   double-click on a stage node
+   * onRecordMoves(moves)         behaviour: nodes were dragged or arranged: [{id, x, y}]
    * onAddObject(shape, label, x, y)  behaviour: a shape tool clicked empty space
-   * onConnect(a, b, directed)   behaviour: line/arrow dragged from node to node
- * onPush(id, dx, dy)          behaviour: push tool dragged from a node (the drag, in px)
-   * onTool(tool)                the tool changed
+   * onConnect(a, b, directed)    behaviour: line/arrow dragged from node to node
+   * onResize(list)               behaviour: sizes changed: [{id, size}]
+   * onPaste(plan)                behaviour: paste a copy; plan = {nodes: [{shape, label, x, y, size}],
+   *                              edges: [{a, b, directed}]} (a, b are indexes into nodes); returns the new ids
+   * onTool(tool)                 the tool changed
    */
   constructor(container, callbacks) {
     this.el = container;
@@ -41,10 +59,12 @@ export class Editor {
     this.mode = 'stage';
     this.tool = 'circle';
     this.view = null; // behaviour mode: state to show, with editor ids
-    this.trails = []; // behaviour mode: [{from, to}] moves the steps make, drawn faintly
-    this.selected = null;
+    this.trails = []; // behaviour mode: [[{x, y}, …]] moves the steps make, drawn faintly
+    this.sel = new Set(); // selected ids
     this.fresh = null; // id that just appeared (pops in)
-    this.drag = null; // { mode: 'move' | 'link' | 'record' | 'push', id, dx, dy, ghost, x, y, moved }
+    this.snap = false; // snap to the grid
+    this.clipboard = null; // { nodes, edges, pastes }
+    this.drag = null;
     Object.assign(this, callbacks);
 
     container.addEventListener('pointerdown', (e) => this.down(e));
@@ -60,7 +80,7 @@ export class Editor {
 
   setScene(scene) {
     this.scene = scene;
-    this.select(null);
+    this.setSelection([]);
     this.changed();
   }
 
@@ -84,6 +104,11 @@ export class Editor {
     this.onTool?.(tool);
   }
 
+  setSnap(on) {
+    this.snap = !!on;
+    this.render();
+  }
+
   /** The state on screen: the stage, or the picture after the steps. */
   state() {
     return this.mode === 'behaviour' && this.view ? this.view : sceneToState(this.scene);
@@ -93,10 +118,13 @@ export class Editor {
     let state = this.state();
     const d = this.drag;
     if (d?.mode === 'record') {
-      state = { ...state, nodes: state.nodes.map((nd) => (nd.id === d.id ? { ...nd, x: d.x, y: d.y } : nd)) };
+      state = { ...state, nodes: state.nodes.map((nd) => (d.pos.has(nd.id) ? { ...nd, ...d.pos.get(nd.id) } : nd)) };
+    } else if (d?.mode === 'resize' && this.mode === 'behaviour') {
+      state = { ...state, nodes: state.nodes.map((nd) => (nd.id === d.id ? { ...nd, size: d.size } : nd)) };
     }
     this.el.innerHTML = renderSVG(state, {
-      interactive: true, selected: this.selected, ghost: d?.ghost, fresh: this.fresh,
+      interactive: true, selected: this.sel, handle: !d || d.mode === 'resize', ghost: d?.ghost, fresh: this.fresh,
+      lasso: d?.mode === 'lasso' ? d.rect : null, grid: this.snap,
       trails: this.mode === 'behaviour' ? this.trails : null,
     });
   }
@@ -114,11 +142,31 @@ export class Editor {
     return e ? { ...e, kind: 'edge' } : null;
   }
 
-  select(id) {
-    const obj = this.lookup(id);
-    this.selected = obj ? id : null;
+  // ---------- selection ----------
+
+  /** The one selected object's id, or null when nothing or several are selected. */
+  get selected() { return this.sel.size === 1 ? [...this.sel][0] : null; }
+  selectedIds() { return [...this.sel]; }
+  selection() { return [...this.sel].map((id) => this.lookup(id)).filter(Boolean); }
+  selectedNodes() { return this.selection().filter((o) => o.kind === 'node'); }
+
+  setSelection(ids) {
+    this.sel = new Set(ids.filter((id) => this.lookup(id)));
     this.render();
-    this.onSelect?.(obj);
+    this.onSelect?.(this.selection());
+  }
+
+  select(id) { this.setSelection(id === null || id === undefined ? [] : [id]); }
+
+  toggle(id) {
+    const next = new Set(this.sel);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.setSelection([...next]);
+  }
+
+  selectAll() {
+    const st = this.state();
+    this.setSelection([...st.nodes.map((n) => n.id), ...st.edges.map((e) => e.id)]);
   }
 
   /** Select an object that just appeared, with a little pop. */
@@ -128,6 +176,8 @@ export class Editor {
     clearTimeout(this.freshTimer);
     this.freshTimer = setTimeout(() => { this.fresh = null; }, 400);
   }
+
+  // ---------- pointer ----------
 
   point(e) {
     const r = this.el.querySelector('svg').getBoundingClientRect();
@@ -144,7 +194,7 @@ export class Editor {
   }
 
   nodeAt(p) {
-    return [...this.state().nodes].reverse().find((n) => hits(n.shape ?? 'circle', n.label, n.x, n.y, p)) ?? null;
+    return [...this.state().nodes].reverse().find((n) => hits(n.shape ?? 'circle', n.label, n.x, n.y, p, n.size ?? 1)) ?? null;
   }
 
   nextLabel() {
@@ -160,37 +210,37 @@ export class Editor {
 
   down(e) {
     const p = this.point(e);
+    this.el.setPointerCapture(e.pointerId);
+    const additive = e.ctrlKey || e.metaKey;
+
+    if (e.target.closest?.('[data-handle]') && this.selected !== null) {
+      const nd = this.lookup(this.selected);
+      if (nd?.kind === 'node') {
+        this.drag = { mode: 'resize', id: nd.id, size: nd.size ?? 1 };
+        return;
+      }
+    }
+
     const id = this.hitId(e);
     const obj = this.lookup(id);
-    this.el.setPointerCapture(e.pointerId);
     const linking = isLink(this.tool) || e.button === 2 || e.shiftKey;
 
-    if (obj?.kind === 'node' && this.tool === 'push' && this.mode === 'behaviour') {
-      this.drag = { mode: 'push', id, ghost: { x1: obj.x, y1: obj.y, x2: p.x, y2: p.y } };
-      this.select(id);
-    } else if (obj?.kind === 'node' && linking) {
-      this.drag = { mode: 'link', id, directed: this.tool === 'arrow', ghost: { x1: obj.x, y1: obj.y, x2: p.x, y2: p.y } };
-      this.select(id);
-    } else if (obj?.kind === 'node') {
-      this.drag = this.mode === 'behaviour'
-        ? { mode: 'record', id, dx: obj.x - p.x, dy: obj.y - p.y, x: obj.x, y: obj.y, x0: obj.x, y0: obj.y }
-        : { mode: 'move', id, dx: obj.x - p.x, dy: obj.y - p.y };
-      this.select(id);
-    } else if (obj) {
-      this.select(id); // a line
-    } else if (e.button === 0 && isShape(this.tool)) {
-      const label = this.tool === 'text' ? 'Text' : this.nextLabel();
-      const at = keepInside(this.tool, label, p.x, p.y);
-      if (this.mode === 'behaviour') {
-        this.onAddObject?.(this.tool, label, at.x, at.y);
+    if (obj?.kind === 'node') {
+      if (additive) { this.toggle(id); return; }
+      if (linking) {
+        this.drag = { mode: 'link', id, directed: this.tool === 'arrow', shift: e.shiftKey, p0: p, ghost: { x1: obj.x, y1: obj.y, x2: p.x, y2: p.y } };
+        if (!this.sel.has(id)) this.select(id);
       } else {
-        const nid = this.scene.addNode(label, at.x, at.y, this.tool);
-        this.popIn(nid);
-        this.changed();
-        if (this.tool === 'text') this.onRename?.();
+        if (!this.sel.has(id)) this.select(id);
+        const nodes = this.selectedNodes();
+        const start = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+        this.drag = { mode: this.mode === 'behaviour' ? 'record' : 'move', id, p0: p, start, pos: new Map(start), nodes };
       }
-    } else {
-      this.select(null);
+    } else if (obj) {
+      if (additive) this.toggle(id); else this.select(id); // a line
+    } else if (e.button === 0) {
+      // empty space: a click adds a shape (or clears the selection), a drag is a lasso
+      this.drag = { mode: 'empty', p0: p, additive: additive || e.shiftKey, base: new Set(this.sel), rect: { x1: p.x, y1: p.y, x2: p.x, y2: p.y } };
     }
   }
 
@@ -198,34 +248,82 @@ export class Editor {
     const d = this.drag;
     if (!d) return;
     const p = this.point(e);
-    if (d.mode === 'link' || d.mode === 'push') {
+
+    if (d.mode === 'link') {
       Object.assign(d.ghost, { x2: p.x, y2: p.y });
       this.render();
-      return;
+    } else if (d.mode === 'move' || d.mode === 'record') {
+      let dx = p.x - d.p0.x, dy = p.y - d.p0.y;
+      if (this.snap) { // the object under the pointer lands on the grid, the others keep their distance to it
+        const s = d.start.get(d.id);
+        dx = snapTo(s.x + dx) - s.x;
+        dy = snapTo(s.y + dy) - s.y;
+      }
+      ({ dx, dy } = fitDelta(d.nodes.map((n) => ({ ...n, ...d.start.get(n.id) })), dx, dy));
+      for (const [id, s] of d.start) d.pos.set(id, { x: Math.round(s.x + dx), y: Math.round(s.y + dy) });
+      if (d.mode === 'record') {
+        this.render();
+      } else {
+        for (const [id, at] of d.pos) Object.assign(this.scene.get(id), at);
+        this.changed();
+      }
+    } else if (d.mode === 'resize') {
+      const nd = this.lookup(d.id);
+      const h1 = halfSize(nd.shape ?? 'circle', nd.label, 1);
+      const raw = ((p.x - nd.x - 3) / h1.x + (p.y - nd.y - 3) / h1.y) / 2;
+      d.size = clamp(Math.round(raw * 20) / 20, SIZE.min, SIZE.max);
+      if (this.mode === 'stage') {
+        const o = this.scene.get(d.id);
+        o.size = d.size;
+        Object.assign(o, keepInside(o.shape, o.label, o.x, o.y, o.size));
+        this.changed();
+      } else {
+        this.render();
+      }
+    } else if (d.mode === 'empty' || d.mode === 'lasso') {
+      Object.assign(d.rect, { x2: p.x, y2: p.y });
+      if (d.mode === 'empty' && Math.hypot(p.x - d.p0.x, p.y - d.p0.y) > LASSO_AFTER) d.mode = 'lasso';
+      if (d.mode === 'lasso') {
+        this.sel = new Set([...(d.additive ? d.base : []), ...this.insideLasso(d.rect)]);
+        this.render();
+      }
     }
-    const obj = this.lookup(d.id);
-    const at = keepInside(obj.shape ?? 'circle', obj.label, p.x + d.dx, p.y + d.dy);
-    if (d.mode === 'record') {
-      Object.assign(d, at);
-      this.render();
-    } else {
-      Object.assign(this.scene.get(d.id), at);
-      this.changed();
-    }
+  }
+
+  /** Ids inside the lasso: nodes whose centre is in it, and the lines between two such nodes. */
+  insideLasso(r) {
+    const [x0, x1] = [Math.min(r.x1, r.x2), Math.max(r.x1, r.x2)], [y0, y1] = [Math.min(r.y1, r.y2), Math.max(r.y1, r.y2)];
+    const st = this.state();
+    const nodes = new Set(st.nodes.filter((n) => n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1).map((n) => n.id));
+    return [...nodes, ...st.edges.filter((e) => nodes.has(e.a) && nodes.has(e.b)).map((e) => e.id)];
   }
 
   up(e) {
     const d = this.drag;
     this.drag = null;
-    if (d?.mode === 'record') {
-      if (Math.hypot(d.x - d.x0, d.y - d.y0) > 3) this.onRecordMove?.(d.id, d.x, d.y);
+    if (!d) return;
+
+    if (d.mode === 'record') {
+      const moves = [...d.pos].filter(([id, at]) => at.x !== d.start.get(id).x || at.y !== d.start.get(id).y)
+        .map(([id, at]) => ({ id, ...at }));
+      if (Math.hypot(d.pos.get(d.id).x - d.start.get(d.id).x, d.pos.get(d.id).y - d.start.get(d.id).y) > 3 && moves.length) this.onRecordMoves?.(moves);
       else this.render();
-    } else if (d?.mode === 'push') {
-      const { x1, y1, x2, y2 } = d.ghost;
-      if (Math.hypot(x2 - x1, y2 - y1) > 5) this.onPush?.(d.id, x2 - x1, y2 - y1);
+    } else if (d.mode === 'move') {
+      this.render();
+    } else if (d.mode === 'resize') {
+      if (this.mode === 'behaviour' && d.size !== (this.lookup(d.id)?.size ?? 1)) this.onResize?.([{ id: d.id, size: d.size }]);
       else this.render();
-    } else if (d?.mode === 'link') {
-      const target = this.nodeAt(this.point(e));
+    } else if (d.mode === 'lasso') {
+      this.setSelection([...this.sel]);
+    } else if (d.mode === 'empty') {
+      const p = this.point(e);
+      if (isShape(this.tool)) this.addShapeAt(p);
+      else if (!d.additive) this.select(null);
+      else this.render();
+    } else if (d.mode === 'link') {
+      const p = this.point(e);
+      const target = this.nodeAt(p);
+      if (d.shift && Math.hypot(p.x - d.p0.x, p.y - d.p0.y) < LASSO_AFTER) { this.toggle(d.id); return; } // a shift-click
       const st = this.state();
       const exists = target && st.edges.some((x) => (x.a === d.id && x.b === target.id) || (x.a === target.id && x.b === d.id));
       if (target && target.id !== d.id && !exists) {
@@ -239,10 +337,25 @@ export class Editor {
     }
   }
 
+  addShapeAt(p) {
+    const label = this.tool === 'text' ? 'Text' : this.nextLabel();
+    const at = keepInside(this.tool, label, this.snap ? snapTo(p.x) : p.x, this.snap ? snapTo(p.y) : p.y);
+    if (this.mode === 'behaviour') {
+      this.onAddObject?.(this.tool, label, at.x, at.y);
+    } else {
+      const nid = this.scene.addNode(label, at.x, at.y, this.tool);
+      this.popIn(nid);
+      this.changed();
+      if (this.tool === 'text') this.onRename?.();
+    }
+  }
+
+  // ---------- editing the selection ----------
+
   deleteSelected() {
-    if (!this.selected || this.mode !== 'stage') return;
-    this.scene.remove(this.selected);
-    this.select(null);
+    if (!this.sel.size || this.mode !== 'stage') return;
+    for (const id of this.sel) if (this.scene.get(id)) this.scene.remove(id);
+    this.setSelection([]);
     this.changed();
   }
 
@@ -252,4 +365,73 @@ export class Editor {
     o.label = label;
     this.changed();
   }
+
+  /** Sets the size of every selected node (the stage changes now; Behaviour asks the page for steps). */
+  setSize(size) {
+    const s = clamp(Math.round(size * 100) / 100, SIZE.min, SIZE.max);
+    const nodes = this.selectedNodes();
+    if (!nodes.length) return;
+    if (this.mode === 'behaviour') {
+      const changed = nodes.filter((n) => (n.size ?? 1) !== s);
+      if (changed.length) this.onResize?.(changed.map((n) => ({ id: n.id, size: s })));
+      return;
+    }
+    for (const n of nodes) {
+      const o = this.scene.get(n.id);
+      o.size = s;
+      Object.assign(o, keepInside(o.shape, o.label, o.x, o.y, s));
+    }
+    this.changed();
+  }
+
+  /** Stage only: move the selected nodes by (dx, dy) px, e.g. with the arrow keys. */
+  nudge(dx, dy) {
+    const nodes = this.selectedNodes();
+    if (this.mode !== 'stage' || !nodes.length) return;
+    const fit = fitDelta(nodes, dx, dy);
+    for (const n of nodes) Object.assign(this.scene.get(n.id), { x: n.x + fit.dx, y: n.y + fit.dy });
+    this.changed();
+  }
+
+  /** Align or spread the selected nodes (see core/arrange.js). */
+  arrangeSelected(kind) {
+    const moves = arrange(this.selectedNodes(), kind);
+    if (!moves.length) return;
+    if (this.mode === 'behaviour') { this.onRecordMoves?.(moves.map(({ id, x, y }) => ({ id, x, y }))); return; }
+    for (const m of moves) Object.assign(this.scene.get(m.id), { x: m.x, y: m.y });
+    this.changed();
+  }
+
+  /** Remembers the selected nodes and the lines between them. Returns how many nodes. */
+  copy() {
+    const nodes = this.selectedNodes();
+    if (!nodes.length) return 0;
+    const index = new Map(nodes.map((n, i) => [n.id, i]));
+    this.clipboard = {
+      nodes: nodes.map(({ shape, label, x, y, size }) => ({ shape: shape ?? 'circle', label, x, y, size: size ?? 1 })),
+      edges: this.state().edges.filter((e) => index.has(e.a) && index.has(e.b)).map((e) => ({ a: index.get(e.a), b: index.get(e.b), directed: !!e.directed })),
+      pastes: 0,
+    };
+    return nodes.length;
+  }
+
+  /** Adds a copy of the clipboard, a little down and right of the original; selects the copy. */
+  paste() {
+    const c = this.clipboard;
+    if (!c) return;
+    const off = GRID * ++c.pastes;
+    const { dx, dy } = fitDelta(c.nodes, off, off);
+    const plan = { nodes: c.nodes.map((n) => ({ ...n, x: n.x + dx, y: n.y + dy })), edges: c.edges };
+    if (this.mode === 'behaviour') {
+      const ids = this.onPaste?.(plan) ?? [];
+      this.setSelection(ids);
+      return;
+    }
+    const ids = plan.nodes.map((n) => this.scene.addNode(n.label, n.x, n.y, n.shape, n.size));
+    const edges = plan.edges.map((e) => this.scene.addEdge(ids[e.a], ids[e.b], e.directed));
+    this.setSelection([...ids, ...edges]);
+    this.changed();
+  }
+
+  duplicate() { if (this.copy()) this.paste(); }
 }

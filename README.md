@@ -20,10 +20,15 @@ npm start            # http://localhost:8080  (PORT=xxxx npm start to change)
 The page has three tabs: **Stage → Behaviour → Result**.
 1. **Stage:** draw the starting picture with the tool row: circles, rectangles, triangles, text,
    lines and arrows (pick a shape and click to add, drag to move, line or arrow tool to connect).
+   **Drag on empty space to lasso** several objects (Ctrl/Cmd-click adds one; Ctrl+A selects all),
+   then move, delete, duplicate or arrange them together. A handle on the corner of a selected object
+   (or the **Size** field) changes its size. Undo/redo (Ctrl+Z / Ctrl+Shift+Z), copy and paste, arrow keys
+   to nudge, and an optional snap-to-grid (G) are there too. Your work is autosaved in the browser;
+   **New project** starts again.
 2. **Behaviour:** either
    - **Steps** (no code): click an object, then pick a colour; drag it to record a move; add
-     objects that appear partway, connect them, remove things, or **tidy the tree** so it glides
-     into rows; push things and **let it move** under a rule; add pauses. Each step plays after the previous one, or "with previous". The
+     objects that appear partway, connect them, remove things, **resize** them, align or spread a
+     selection; add pauses. A step on a selection of several objects plays all at once. Each step plays after the previous one, or "with previous". The
      generated `steps.lua` is shown underneath.
    - **Code** for loops and algorithms (starts empty; DFS, BFS and others are under **Load example…**).
    Run plays stage → steps → code.
@@ -39,16 +44,8 @@ Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a cl
 block.
 
 In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
-`remove(id)` makes it disappear and `tree_layout(root)` tidies a tree after it changes shape (see the
-**Tree rotation** example).
-
-**Motion by rules:** `push(id, vx, vy)` gives a node a speed and `simulate(seconds, rule)` lets time
-run while a rule moves things: a Lua function of your own, or a ready-made one such as `"spread"`
-(a graph untangles itself) or `"fall"`. In Steps: drag with the **Push** tool from an object to where it should go (it adds a 2 s **Let it move**
-in which it gets there, then keeps its speed for later rules),
-or pick a rule under **Let it move**. The motion
-is worked out once and stored, so every frame and every export shows exactly the same thing (see
-the **Untangle** and **Push, fall, your own rule** examples).
+`remove(id)` makes it disappear and `size(id, 1.5, dur)` scales a node about its centre (0.25 to 5;
+`node("A", x, y, 2)` starts at a size). Sizes show in frames, the animated SVG and the MP4.
 
 ## CLI
 
@@ -67,7 +64,6 @@ Options: `--trace`, `--frame N OUT.svg` (one frame), `--frames DIR` (every frame
 npm test                  # unit and integration tests
 npm run check:pixels      # pictures vs v1.0.0, rendered by librsvg
 npm run check:animated    # writes out/animated_check.html: animated SVG vs the player, in Chrome
-npm run check:layout      # how tidy examples/untangle.lua ends up
 ```
 
 See [HANDOFF.md](HANDOFF.md) §4 for what each one should report.

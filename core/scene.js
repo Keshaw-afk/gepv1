@@ -5,6 +5,7 @@
 import { RADIUS, defaultColor } from './shapes.js';
 
 export const CANVAS = { width: 640, height: 360 }; // even sizes: required by the H.264 encoder
+export const GRID = 20; // the editor's snap-to-grid spacing
 export const NODE_RADIUS = RADIUS;
 export const DEFAULT_NODE_COLOR = '#cccccc';
 export const DEFAULT_EDGE_COLOR = '#888888';
@@ -15,14 +16,24 @@ export class Scene {
     this.nextId = 1;
   }
 
+  /** Plain data for saving and undo: everything needed to rebuild this scene. */
+  toJSON() { return { nextId: this.nextId, objects: [...this.objects.values()].map((o) => ({ ...o })) }; }
+
+  static from(data) {
+    const s = new Scene();
+    s.nextId = data.nextId;
+    for (const o of data.objects) s.objects.set(o.id, { ...o });
+    return s;
+  }
+
   get(id) { return this.objects.get(id); }
   isNode(id) { return this.objects.get(id)?.kind === 'node'; }
   nodes() { return [...this.objects.values()].filter((o) => o.kind === 'node'); }
   edges() { return [...this.objects.values()].filter((o) => o.kind === 'edge'); }
 
-  addNode(label, x, y, shape = 'circle') {
+  addNode(label, x, y, shape = 'circle', size = 1) {
     const id = this.nextId++;
-    this.objects.set(id, { id, kind: 'node', shape, label: String(label), x, y, color: defaultColor(shape) });
+    this.objects.set(id, { id, kind: 'node', shape, label: String(label), x, y, size, color: defaultColor(shape) });
     return id;
   }
 

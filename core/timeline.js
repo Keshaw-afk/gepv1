@@ -2,9 +2,10 @@
 // All times are integer milliseconds so traces and frame counts stay exact.
 //
 // Command shapes:
-//   { op: 'create', id, kind: 'node', props: { label, pos: {x, y}, color }, t, dur: 0 }
+//   { op: 'create', id, kind: 'node', props: { label, shape, pos: {x, y}, color, size }, t, dur: 0 }
 //   { op: 'create', id, kind: 'edge', props: { a, b, color }, t, dur: 0 }
-//   { op: 'set', id, prop: 'color' | 'pos', value, t, dur }
+//   { op: 'set', id, prop: 'color' | 'pos' | 'size', value, t, dur }
+//   { op: 'remove', id }
 // Commands made by Lua also carry src: { file, line } (or null).
 
 export const toMs = (seconds) => Math.round(seconds * 1000);

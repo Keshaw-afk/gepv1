@@ -14,11 +14,12 @@ and show every step of the process. Source notes: [`idea.txt`](idea.txt).
 - **GUI editor (web page):** a tool row (select, circle, rectangle, triangle, text, line, arrow);
   drag and drop the starting picture, then save the stage
 - **GUI steps:** build behaviour without code: colour, move, pause, and objects that appear,
-  connect and disappear while it plays, plus "tidy the tree"; in sequence or together
+  connect, resize and disappear while it plays; in sequence or together
 - Shapes: `circle`, `rect`, `triangle`, `text`; lines and arrows between them
 - Lua API: `node`, `rect`, `triangle`, `text`, `edge`, `arrow`, `color`, `move` (linear or
-  `"smooth"`), `remove`, `wait`, `pos`, `neighbors`, `edge_of`, `tree_layout`, `push`, `simulate`
-- **Motion by rules ("forces"):** one general mechanism: velocity plus a rule (ready-made or Lua)
+  `"smooth"`), `size`, `remove`, `wait`, `pos`, `neighbors`, `edge_of`
+- **Editing comforts:** lasso and multi-select, group move, resize handle, align and spread, duplicate,
+  copy/paste, nudge, snap-to-grid, undo/redo and autosave (`web/history.js`, localStorage)
 - In-page preview that works in **frames** (the MP4's frames), **moments** (frames where a change
   has just finished, with the step or line that made it) and a trace of every pipeline stage
 - Output: **MP4 video** (SVG frames encoded by ffmpeg), **animated SVG** (one self-playing file),
@@ -142,29 +143,11 @@ still in progress is interpolated: colours blend; positions move linearly, or al
 starts from wherever the property currently is, so a move can change direction mid-move.
 
 **Movement is ordinary moves**
-`pos(id)` tells a script where a node is right now (also halfway through a move), and
-`tree_layout(root)` computes tidy positions for the tree below `root` (a single child keeps its
-side, as in a binary search tree) and emits one smooth move per node. So a rotation in a
-balanced tree is: rewire the lines, then `tree_layout` (see `examples/rotation.lua`).
+`pos(id)` tells a script where a node is right now (also halfway through a move).
 
-**Motion by rules ("forces"): one mechanism, not a catalogue**
-Every node can have a velocity: `push(id, vx, vy)` (px/s; in the GUI, drag with the Push tool).
-`simulate(seconds, rule)` lets time run in fixed 10 ms ticks. Each tick the rule gives every
-moving node an acceleration, then velocity and position follow, and the canvas edges are walls.
-A rule is either a Lua function `function(id, x, y, vx, vy) return ax, ay end` (it can call
-`pos()` and `neighbors()`, and sees the simulation live) or the name of a ready-made example:
-`"drift"` (no force: keep the pushes), `"spread"` (untangle a graph: nodes push apart, lines pull,
-friction rises so it settles), `"fall"`, `"towards"` (with `{target = id}`). `{only = …}` limits
-who moves; the rest still count (e.g. they push others away).
-
-The result is **baked**: one `set pos` command per moving node that carries its path (a position
-every tick). So the player, every frame, `--frame N`, the MP4 and the animated SVG all show exactly
-the same motion, a simulation is one moment and one trace line per node, and the same program
-always moves the same way. A node slower than 10 px/s at the end counts as settled; `move()`
-clears a node's velocity. Inside a rule time stands still, so a rule only returns an acceleration:
-`color`, `move`, `remove`, `wait`, `push`, creating objects and a nested `simulate` give a clear
-error there. In the GUI, **Let it move** writes `simulate(2, "spread")` into
-`steps.lua`, so the "GUI generates plain API calls" rule holds for motion too.
+`size(id, s, dur?, ease?)` scales a node about its centre like a colour change (a uniform factor, 0.25 to
+5; the static SVG adds `scale(s)` to the node's `transform` only when it is not 1; the animated SVG scales an
+inner group so it never fights the move animation).
 
 ---
 
@@ -174,9 +157,8 @@ error there. In the GUI, **Let it move** writes `simulate(2, "spread")` into
 core/      shared engine (no DOM, no Node APIs; runs in browser and Node)
 node/      CLI, local web server, video export
 web/       editor page
-examples/  stage.lua, dfs.lua, bfs.lua, packets.lua, sort.lua, rotation.lua, network.lua,
-           untangle.lua, rules.lua
-tools/     verification: pixel_compare, animated_check, layout_check, spread_tune (see HANDOFF.md)
+examples/  stage.lua, dfs.lua, bfs.lua, packets.lua, sort.lua, network.lua
+tools/     verification: pixel_compare, animated_check (see HANDOFF.md)
 test/      node:test suites
 ```
 
@@ -185,8 +167,7 @@ test/      node:test suites
 | `core/scene.js` | Objects (nodes with a shape, edges or arrows), `neighbors`, `edgeOf`, delete with edge cleanup |
 | `core/shapes.js` | Shape geometry: outline at the origin, size, hit test, label position |
 | `core/easing.js` | `linear` and `smooth` easing, and the matching SMIL `keySplines` |
-| `core/layout.js` | `treeLayout`: tidy positions for a tree (used by `tree_layout`) |
-| `core/motion.js` | `simulate`: fixed-tick motion under a rule, walls, baked paths; the ready-made rules |
+| `core/arrange.js` | align and spread selected nodes (real shape edges) |
 | `core/timeline.js` | Command list + script clock (integer ms) |
 | `core/player.js` | `sceneAt(timeline, t)`: apply and interpolate commands (create, set, remove); frame times |
 | `core/frames.js` | Frame lookup, moments (landmarks), one frame as an exported SVG |
@@ -202,6 +183,7 @@ test/      node:test suites
 | `node/server.js` | Serves the page; `POST /api/export` runs the engine + ffmpeg (localhost only) |
 | `web/editor.js` | Tools; Stage mode: pointer → scene edits. Behaviour mode: drag → move step, shape → add step, line/arrow → connect step |
 | `web/app.js` | Tabs (Stage → Behaviour → Result), steps list, code, frame player, moments, output, downloads |
+| `web/history.js` | undo/redo by debounced JSON snapshots (tested) |
 | `web/codeview.js` | Generated code blocks: Copy, Save, Wrap, light highlighting |
 
 **Script safety:** only Lua's base, table, string and math libraries are loaded (no `io`, `os`,
@@ -216,9 +198,14 @@ test/      node:test suites
 | Drag an object | Move it | Record a move |
 | Line or arrow tool (or Shift-drag) from one object to another | Connect them | They get connected |
 | Pick a colour | | Colour change |
-| Push tool `P`: drag from an object | | Give it a speed (`push`) |
-| Let it move… (rule, uses the duration) | | `simulate(t, rule)` |
-| Tidy tree / Remove buttons, `Delete` key | Delete removes the selection (with its lines) | Tidy the tree below / the object disappears |
+| Drag on empty space (any tool) | Lasso: select several | same |
+| Ctrl/Cmd-click, Ctrl+A | Add to / toggle the selection; select all | same |
+| Corner handle, Size field | Change size | `size` steps (all selected together) |
+| Align / spread buttons | Move the nodes now | Move steps together |
+| Duplicate, Ctrl+C / Ctrl+V | Copy of the nodes and lines between them | `add` + `connect` steps |
+| Delete key / Delete or Remove button | Delete the selection (with its lines) | The objects disappear |
+| Arrow keys (Shift: 10 px), `G` | Nudge; snap to grid | Snap only |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo the whole project | same |
 | Double-click / the Label field | Rename | Rename an object a step added |
 | `Ctrl+S` / `Ctrl+O` | Save or load `stage.lua` | |
 
@@ -231,9 +218,8 @@ A move is an `<animateTransform type="translate">` on the object's group (smooth
 An arrow's points depend on both ends, so they are sampled every 10 ms while either end moves.
 Objects created later start hidden; removed ones are hidden from then on. When animations overlap,
 the later one wins, as in the player. It uses the same ids, classes and `<style>` as a still frame.
-A simulated move is one `<animateTransform>` through every baked position. It was checked in
-Chrome against the player every 23 ms for the DFS, rotation, network, untangle and rules examples
-and two scripts of edge cases (34,412 checks: position, colour and visibility of every object,
+It was checked in
+Chrome against the player every 23 ms for the DFS, network, edge-case and size scripts (17,019 checks: position, colour and visibility of every object,
 arrow points). It matched everywhere except exactly on a command's start instant, where Chrome's
 clock is half a millisecond off. It plays once.
 
@@ -264,11 +250,7 @@ wait(t)                 -- advance the script clock by t seconds
 pos(id)                 -- x, y of a node right now (also halfway through a move)
 neighbors(id)           -- list of nodes connected to id (edges are undirected, creation order)
 edge_of(a, b)           -- id of the edge between a and b, or nil
-tree_layout(root, dur?, ease?)  -- move the tree below root into tidy rows (default 0.6 s, smooth)
-push(id, vx, vy)        -- give a node a velocity in px/s (used by simulate)
-simulate(t, rule?, opts?)  -- let t seconds run while a rule moves things; rule: a function
-                        --   (id, x, y, vx, vy) -> ax, ay, or "drift" (default), "spread", "fall",
-                        --   "towards"; opts: {only = id or {ids}, target = id}
+size(id, s, dur?, ease?) -- scale a node about its centre (0.25 to 5, 1 = normal); node(..., size) starts at a size
 print(...)              -- shown in the trace
 ```
 
@@ -328,9 +310,10 @@ This is actual output, and the test suite checks these numbers.
 5. Trace output and the DFS demo end-to-end
 6. Usability: exported SVG with ids and `<style>`, adjustable output, code viewer,
    frames as the unit, moments
-7. Shapes and movement: rect, triangle, text, arrows; remove; smooth moves, `pos`, `tree_layout`;
+7. Shapes and movement: rect, triangle, text, arrows; remove; smooth moves, `pos`;
    Steps that add, connect and remove objects; tool row
-8. Motion by rules: `push`, `simulate` with baked paths; Push tool and Let it move
+8. Size, lasso and editing comforts (undo, autosave, align, copy/paste); the rule-based motion and tree
+   layout of v1.1.0 were removed again
 
 ---
 

@@ -5,9 +5,10 @@
 // It uses the same resolved tweens as the player (tweens() in player.js), so it shows exactly
 // what the preview and the MP4 show:
 //   colour tween  -> <animate attributeName="fill|stroke"> (+ the label flips black/white)
+//   size tween    -> <animateTransform type="scale"> on an inner group (only objects that are ever
+//                    not normal size get one, so a size animation never fights the move animation)
 //   move tween    -> <animateTransform type="translate"> on the object's group (eased moves use the
 //                    same curve as SMIL keySplines) and <animate> on the ends of every line touching it
-//   simulated move -> the same, through every baked position (values="…")
 //   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves,
 //                    and set at once when an end jumps
 //   create at t>0 -> hidden until t; remove -> hidden from t (<set attributeName="visibility">)
@@ -19,7 +20,7 @@ import { contrastText, mixColor } from './colors.js';
 import { DEFAULT_OUTPUT } from './output.js';
 import { smilEase } from './easing.js';
 import { outline, outlineTag, labelDy } from './shapes.js';
-import { paint, esc, n, timelineIds, svgOpen, styleBlock, arrowDefs, backgroundRect, translate, arrowPoints, labelFill, ARROWHEAD_ID } from './svg.js';
+import { paint, esc, n, n3, timelineIds, svgOpen, styleBlock, arrowDefs, backgroundRect, translate, arrowPoints, labelFill, ARROWHEAD_ID } from './svg.js';
 
 const SAMPLE_MS = 10;
 const s = (ms) => `${ms / 1000}s`; // times are whole ms
@@ -35,19 +36,9 @@ function animateMove(from, to, t0, dur, ease) {
   return `<animateTransform attributeName="transform" type="translate" from="${f}" to="${t}" begin="${s(t0)}" dur="${s(dur)}"${smilEase(ease)} fill="freeze"/>`;
 }
 
-// A simulated move: one animation through every baked position (evenly spaced in time).
-function animatePathMove(tw) {
-  const v = [];
-  for (let i = 0; i < tw.path.length; i += 2) v.push(`${n(tw.path[i])} ${n(tw.path[i + 1])}`);
-  return `<animateTransform attributeName="transform" type="translate" values="${v.join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`;
-}
-function animatePathEnd(tw, k) {
-  const xs = [], ys = [];
-  for (let i = 0; i < tw.path.length; i += 2) { xs.push(n(tw.path[i])); ys.push(n(tw.path[i + 1])); }
-  return [
-    `<animate attributeName="x${k}" values="${xs.join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`,
-    `<animate attributeName="y${k}" values="${ys.join(';')}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"/>`,
-  ];
+function animateScale(from, to, t0, dur, ease) {
+  if (dur === 0) return `<animateTransform attributeName="transform" type="scale" from="${n3(to)}" to="${n3(to)}" begin="${s(t0)}" dur="0.001s" fill="freeze"/>`;
+  return `<animateTransform attributeName="transform" type="scale" from="${n3(from)}" to="${n3(to)}" begin="${s(t0)}" dur="${s(dur)}"${smilEase(ease)} fill="freeze"/>`;
 }
 
 // When does the label switch between black and white text during a colour tween? (or null)
@@ -84,7 +75,7 @@ export function renderAnimatedSVG(timeline, output = {}) {
 
   // Child animation elements for every SVG element we draw: the node's group (moves), its outline
   // (colour), its label (contrast flips; colour for a text shape), and edges.
-  const kids = { group: new Map(), outline: new Map(), text: new Map(), edge: new Map() };
+  const kids = { group: new Map(), scale: new Map(), outline: new Map(), text: new Map(), edge: new Map() };
   const add = (kind, id, el) => { if (!kids[kind].has(id)) kids[kind].set(id, []); kids[kind].get(id).push(el); };
 
   const all = tweens(timeline);
@@ -99,15 +90,16 @@ export function renderAnimatedSVG(timeline, output = {}) {
       // skip the flip if a later colour change on this node starts first (it decides the text)
       const overtaken = all.slice(i + 1).some((x) => x.id === tw.id && x.prop === 'color' && x.t0 < flip);
       if (flip !== null && !overtaken) add('text', tw.id, set('fill', contrastText(tw.to), flip));
+    } else if (tw.prop === 'size') {
+      add('scale', tw.id, animateScale(tw.from, tw.to, tw.t0, tw.dur, tw.ease));
     } else if (tw.prop === 'pos') {
       const { from: f, to } = tw;
-      add('group', tw.id, tw.path ? animatePathMove(tw) : animateMove(f, to, tw.t0, tw.dur, tw.ease));
+      add('group', tw.id, animateMove(f, to, tw.t0, tw.dur, tw.ease));
       for (const e of edges) {
         if (e.props.directed) continue; // arrows are sampled below
         for (const end of ['a', 'b']) {
           if (e.props[end] !== tw.id) continue;
           const k = end === 'a' ? 1 : 2;
-          if (tw.path) { for (const a of animatePathEnd(tw, k)) add('edge', e.id, a); continue; }
           add('edge', e.id, animate(`x${k}`, n(f.x), n(to.x), tw.t0, tw.dur, tw.ease));
           add('edge', e.id, animate(`y${k}`, n(f.y), n(to.y), tw.t0, tw.dur, tw.ease));
         }
@@ -168,14 +160,19 @@ export function renderAnimatedSVG(timeline, output = {}) {
   for (const c of nodes) {
     const shape = shapeOf.get(c.id);
     const { x, y } = c.props.pos;
+    // a node that is ever not normal size gets an inner group that carries the scale
+    const sized = (c.props.size ?? 1) !== 1 || kids.scale.has(c.id);
+    const pad = sized ? '    ' : '  ';
     body.push(`<g id="${esc(ids.get(c.id))}" class="node ${shape}" transform="${translate(x, y)}"${hidden(c)}>`,
       ...[...visibility(c), ...(kids.group.get(c.id) ?? [])].map((k) => `  ${k}`));
+    if (sized) body.push(...el(`  <g transform="scale(${n3(c.props.size ?? 1)})"`, 'g', kids.scale.get(c.id) ?? [], '').map((l, i, a) => (i === 0 || i === a.length - 1 ? l : `  ${l}`)).slice(0, -1));
     if (shape !== 'text') {
       const tag = outlineTag(shape);
       const shapeEl = outline(shape, ` fill="${paint(c.props.color)}"`).replace(/\/>$/, '');
-      body.push(...el(shapeEl, tag, kids.outline.get(c.id) ?? [], '  '));
+      body.push(...el(shapeEl, tag, kids.outline.get(c.id) ?? [], pad));
     }
-    body.push(`  <text y="${labelDy(shape)}" fill="${labelFill(shape, c.props.color)}">${esc(c.props.label)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
+    body.push(`${pad}<text y="${labelDy(shape)}" fill="${labelFill(shape, c.props.color)}">${esc(c.props.label)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
+    if (sized) body.push('  </g>');
     body.push('</g>');
   }
   out.push(...body.map((l) => '  ' + l), '</svg>');

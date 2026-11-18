@@ -8,9 +8,9 @@
 // For each case below it bakes the expected state (from sceneAt) every 23 ms into a page together
 // with the animated SVG. The page pauses each SVG, seeks with setCurrentTime and compares, for every
 // object: position (the group's transform), fill/stroke colour, arrow points, line ends and
-// visibility. The result is shown on the page and stored in window.checkResult / document.title.
+// scale (size) and visibility. The result is shown on the page and stored in window.checkResult / document.title.
 //
-// Expected today: 34,412 checks, 3 failures, all in "network" at t = 2100 ms. That is exactly a
+// Expected today: see HANDOFF.md §4 (the only known failures are at a command's exact start instant). That is exactly a
 // command's start instant, where Chrome's clock is half a millisecond behind (0.5 ms later it
 // matches). Any other failure is a real difference. Add a case here for every new kind of animation.
 
@@ -27,20 +27,17 @@ const ex = (f) => fs.readFileSync(path.join(root, 'examples', f), 'utf8');
 
 const CASES = {
   dfs: { stage: ex('stage.lua'), script: ex('dfs.lua') },
-  rotation: { script: ex('rotation.lua') },
   network: { script: ex('network.lua') },
-  untangle: { script: ex('untangle.lua') },
-  rules: { script: ex('rules.lua') },
-  // every shape, arrows, smooth moves interrupted mid-move, instant moves, late creation, removal, tree_layout
+  // every shape, arrows, smooth moves interrupted mid-move, instant moves, late creation, removal
   edge: {
     stage: 'A = node("A", 100, 100) B = rect("B", 300, 100) C = triangle("C", 500, 250) T = text("Hi", 320, 300) arrow(A, B) edge(B, C) arrow(C, A)',
     script: 'move(A, 300, 250, 1, "smooth"); wait(0.4); move(A, 50, 50, 0.8); color(T, "red", 0.5); wait(0.3); move(B, 400, 200, 0); wait(0.3)\n' +
-      'P = node("P", 600, 50); arrow(P, B); color(B, "blue", 0.6); wait(0.5); remove(B); move(P, 200, 200, 1, "smooth"); wait(0.4); move(C, 100, 300, 0); wait(0.8); tree_layout(A, 0.5); wait(0.6)',
+      'P = node("P", 600, 50); arrow(P, B); color(B, "blue", 0.6); wait(0.5); remove(B); move(P, 200, 200, 1, "smooth"); wait(0.4); move(C, 100, 300, 0); wait(0.8)',
   },
-  // simulations with arrows and a scripted move between them
-  simarrow: {
-    stage: 'A = node("A", 100, 100) B = rect("B", 400, 200) C = triangle("C", 500, 80) arrow(A, B) edge(B, C)',
-    script: 'push(A, 400, 300); simulate(1.2); move(B, 100, 300, 0.6, "smooth"); simulate(1, "towards", {target = B, only = A}); wait(0.2)',
+  // sizes: set at creation, smooth and linear changes, an interrupted one, an instant one, with moves and arrows
+  sizes: {
+    stage: 'A = node("A", 100, 100, 1.5) B = rect("B", 400, 200) C = triangle("C", 500, 80) T = text("Big", 300, 320, 2) arrow(A, B) edge(B, C)',
+    script: 'size(A, 3, 1, "smooth"); size(B, 0.5, 0.8); wait(0.4); size(A, 1, 0.6); move(B, 100, 300, 0.6, "smooth"); size(C, 2, 0); wait(0.8); size(T, 0.5, 0.5); X = rect("X", 50, 50, 3); size(X, 1, 0.5); wait(0.6)',
   },
 };
 
@@ -54,7 +51,7 @@ for (const [name, prog] of Object.entries(CASES)) {
     const at = new Map(st.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     samples.push({
       t,
-      nodes: st.nodes.map((n) => ({ id: ids.get(n.id), x: n.x, y: n.y, fill: paint(n.color), shape: n.shape })),
+      nodes: st.nodes.map((n) => ({ id: ids.get(n.id), x: n.x, y: n.y, size: n.size, fill: paint(n.color), shape: n.shape })),
       edges: st.edges.map((e) => ({ id: ids.get(e.id), directed: e.directed, a: at.get(e.a), b: at.get(e.b), stroke: paint(e.color) })),
     });
   }
@@ -89,6 +86,10 @@ function check(data) {
         const m = tf(g);
         checks++;
         if (Math.abs(m.e - n.x) > 0.6 || Math.abs(m.f - n.y) > 0.6) bad.push(`${s.t} ${n.id} pos ${m.e.toFixed(2)},${m.f.toFixed(2)} vs ${n.x.toFixed(2)},${n.y.toFixed(2)}`);
+        const inner = g.querySelector(':scope > g'); // the scale group, for objects that are ever not normal size
+        const sc = inner ? tf(inner).a : 1;
+        checks++;
+        if (Math.abs(sc - n.size) > 0.01) bad.push(`${s.t} ${n.id} size ${sc.toFixed(3)} vs ${n.size.toFixed(3)}`);
         const fillEl = n.shape === 'text' ? g.querySelector('text') : g.querySelector('circle,rect,polygon');
         const f = hex(getComputedStyle(fillEl).fill);
         checks++;

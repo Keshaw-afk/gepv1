@@ -1,17 +1,18 @@
 // SVG renderer: one scene state -> one SVG document (string).
 //
-// Every object is a group drawn around its centre and placed with one translate(), so moving any
-// shape is a single transform. Two flavours of the same picture:
+// Every object is a group drawn around its centre and placed with one translate() (plus a scale()
+// when it isn't normal size), so moving any shape is a single transform. Two flavours of the same picture:
 //   export (still frames, video frames, "SVG of this frame"): every object has an id and a class,
 //     shared styling sits in one <style> block, one element per line, so the file is easy to read,
 //     restyle with CSS, script or edit by object:
 //       <line id="A-B" class="edge" x1=… stroke="#888888"/>
 //       <polyline id="A-C" class="edge arrow" points=… marker-mid="url(#arrowhead)"/>
 //       <g id="A" class="node circle" transform="translate(100 180)"><circle r="24" …/><text …>A</text></g>
+//       <g id="B" class="node rect" transform="translate(300 90) scale(1.5)">…</g>      (size 1.5)
 //   inline (the editor and preview inside the page): plain presentation attributes, no ids and no
 //     <style>, because inline SVG shares the page's DOM (an id "time" or a .node rule would leak).
 
-import { CANVAS } from './scene.js';
+import { CANVAS, GRID } from './scene.js';
 import { contrastText, parseColor, toHex } from './colors.js';
 import { DEFAULT_OUTPUT } from './output.js';
 import { RADIUS, FONT_SIZE, halfSize, labelDy, outline, defaultColor } from './shapes.js';
@@ -93,6 +94,9 @@ export function backgroundRect(o, exported) {
 }
 
 export const translate = (x, y) => `translate(${n(x)} ${n(y)})`;
+export const n3 = (v) => Math.round(v * 1000) / 1000;
+/** Where an object goes: its centre, scaled about the centre when it isn't normal size. */
+export const placement = (x, y, size = 1) => `${translate(x, y)}${size && size !== 1 ? ` scale(${n3(size)})` : ''}`;
 /** An arrow's points: start, middle (where the arrowhead sits), end. */
 export const arrowPoints = (a, b) => `${n(a.x)},${n(a.y)} ${n((a.x + b.x) / 2)},${n((a.y + b.y) / 2)} ${n(b.x)},${n(b.y)}`;
 /** Text colour on a shape: black or white for contrast; a text shape is coloured itself. */
@@ -112,7 +116,10 @@ function arrowheadPolygon(a, b, color) {
  * opts.export      export flavour (ids, classes, <style>); otherwise inline flavour
  * opts.ids         Map(object id -> SVG id), e.g. timelineIds(timeline) (export; default: from state)
  * opts.comment     a comment at the top, e.g. which frame this is (export)
- * opts.selected    id to highlight (editor)
+ * opts.selected    id, or a Set / array of ids, to highlight (editor)
+ * opts.grid        faint dots at the snap points (editor)
+ * opts.handle      show a resize handle on the one selected node (editor)
+ * opts.lasso       {x1, y1, x2, y2} the rectangle being dragged to select several (editor)
  * opts.interactive add data-id attributes and wide invisible hit areas (editor)
  * opts.ghost       {x1, y1, x2, y2} dashed line while dragging out a new edge (editor)
  * opts.fresh       id of an object that just appeared (editor: it pops in)
@@ -122,6 +129,7 @@ export function renderSVG(state, opts = {}) {
   const o = { ...DEFAULT_OUTPUT, ...opts.output };
   const ex = !!opts.export;
   const byId = new Map(state.nodes.map((nd) => [nd.id, nd]));
+  const sel = new Set(opts.selected == null ? [] : typeof opts.selected === 'object' ? opts.selected : [opts.selected]);
   const ids = ex ? (opts.ids ?? svgIds(state.nodes, state.edges)) : null;
   const out = [svgOpen(o)];
   const body = [];
@@ -129,6 +137,11 @@ export function renderSVG(state, opts = {}) {
   if (ex) body.push(...styleBlock(o));
   if (ex && state.edges.some((e) => e.directed)) body.push(...arrowDefs());
   body.push(...backgroundRect(o, ex));
+  if (opts.grid && !ex) {
+    const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="1.2" fill="#c4c9d1"/>`;
+    body.push(`<defs><pattern id="gepv1-grid" width="${GRID}" height="${GRID}" patternUnits="userSpaceOnUse">${dot(0, 0)}${dot(GRID, 0)}${dot(0, GRID)}${dot(GRID, GRID)}</pattern></defs>`,
+      `<rect width="${CANVAS.width}" height="${CANVAS.height}" fill="url(#gepv1-grid)" pointer-events="none"/>`);
+  }
 
   for (const pts of opts.trails ?? []) {
     const to = pts.at(-1);
@@ -141,7 +154,7 @@ export function renderSVG(state, opts = {}) {
     if (!a || !b) continue;
     const stroke = paint(e.color);
     const xy = `x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}"`;
-    if (opts.selected === e.id) body.push(`<line ${xy} stroke="#4f8ef7" stroke-width="9" stroke-opacity="0.45" stroke-linecap="round"/>`);
+    if (sel.has(e.id)) body.push(`<line ${xy} stroke="#4f8ef7" stroke-width="9" stroke-opacity="0.45" stroke-linecap="round"/>`);
     if (ex) {
       body.push(e.directed
         ? `<polyline id="${esc(ids.get(e.id))}" class="edge arrow" points="${arrowPoints(a, b)}" stroke="${stroke}" marker-mid="url(#${ARROWHEAD_ID})"/>`
@@ -164,7 +177,7 @@ export function renderSVG(state, opts = {}) {
     const dy = labelDy(shape);
     const label = esc(nd.label);
     if (ex) {
-      const lines = [`<g id="${esc(ids.get(nd.id))}" class="node ${shape}" transform="${translate(nd.x, nd.y)}">`];
+      const lines = [`<g id="${esc(ids.get(nd.id))}" class="node ${shape}" transform="${placement(nd.x, nd.y, nd.size)}">`];
       if (shape !== 'text') lines.push(`  ${outline(shape, ` fill="${fill}"`)}`);
       lines.push(`  <text y="${dy}" fill="${labelFill(shape, nd.color)}">${label}</text>`, '</g>');
       body.push(...lines);
@@ -173,7 +186,7 @@ export function renderSVG(state, opts = {}) {
     const data = opts.interactive ? ` data-id="${nd.id}"` : '';
     const cls = opts.fresh === nd.id ? ' class="pop"' : '';
     const parts = [];
-    if (opts.selected === nd.id) {
+    if (sel.has(nd.id)) {
       const h = halfSize(shape, nd.label);
       parts.push(shape === 'circle'
         ? `<circle r="${RADIUS + 6}" fill="none" stroke="#4f8ef7" stroke-width="3"/>`
@@ -187,7 +200,20 @@ export function renderSVG(state, opts = {}) {
     }
     parts.push(`<text y="${dy}" text-anchor="middle" font-family="${o.font}" font-size="${FONT_SIZE}" font-weight="bold" fill="${labelFill(shape, nd.color)}" pointer-events="none">${label}</text>`);
     // the pop-in class goes on an inner group: a CSS transform on the outer one would replace its translate
-    body.push(`<g transform="${translate(nd.x, nd.y)}">${cls ? `<g${cls}>${parts.join('')}</g>` : parts.join('')}</g>`);
+    body.push(`<g transform="${placement(nd.x, nd.y, nd.size)}">${cls ? `<g${cls}>${parts.join('')}</g>` : parts.join('')}</g>`);
+  }
+
+  // editor furniture, drawn on top at a constant size: the resize handle and the lasso
+  if (opts.handle && sel.size === 1) {
+    const nd = byId.get([...sel][0]);
+    if (nd) {
+      const h = halfSize(nd.shape ?? 'circle', nd.label, nd.size ?? 1);
+      body.push(`<rect x="${n(nd.x + h.x + 3)}" y="${n(nd.y + h.y + 3)}" width="11" height="11" rx="2" fill="#ffffff" stroke="#4f8ef7" stroke-width="2" data-handle="resize" style="cursor:nwse-resize"/>`);
+    }
+  }
+  if (opts.lasso) {
+    const l = opts.lasso;
+    body.push(`<rect x="${n(Math.min(l.x1, l.x2))}" y="${n(Math.min(l.y1, l.y2))}" width="${n(Math.abs(l.x2 - l.x1))}" height="${n(Math.abs(l.y2 - l.y1))}" fill="#4f8ef7" fill-opacity="0.08" stroke="#4f8ef7" stroke-width="1.5" stroke-dasharray="5 4" pointer-events="none"/>`);
   }
 
   out.push(...(ex ? body.map((l) => '  ' + l) : body), '</svg>');

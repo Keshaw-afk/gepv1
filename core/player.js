@@ -3,21 +3,19 @@
 
 import { mixColor } from './colors.js';
 import { ease } from './easing.js';
-import { pathAt } from './motion.js';
 
 function lerpValue(prop, from, to, f) {
   if (f >= 1) return to;
   if (prop === 'color') return mixColor(from, to, f);
   if (prop === 'pos') return { x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f };
+  if (prop === 'size') return from + (to - from) * f;
   return from; // other properties (e.g. label) switch when the tween ends
 }
 
-// A property is stored as a tween { from, to, t0, dur, ease?, path? }; a constant is a tween with
+// A property is stored as a tween { from, to, t0, dur, ease? }; a constant is a tween with
 // dur 0. Easing applies here, so a move that starts mid-move starts from the eased position.
-// A simulated move (simulate()) has a path: a position every tick, followed exactly.
 function valueAt(tw, prop, t) {
   const f = tw.dur === 0 ? 1 : Math.min(1, Math.max(0, (t - tw.t0) / tw.dur));
-  if (tw.path && f < 1) return pathAt(tw.path, f);
   return lerpValue(prop, tw.from, tw.to, ease(tw.ease ?? 'linear', f));
 }
 
@@ -35,7 +33,7 @@ function replay(timeline, tMs, onSet) {
     } else if (c.op === 'set') {
       const o = objs.get(c.id);
       const from = valueAt(o.props[c.prop], c.prop, c.t); // start from wherever it is right now
-      o.props[c.prop] = { from, to: c.value, t0: c.t, dur: c.dur, ease: c.ease, path: c.path };
+      o.props[c.prop] = { from, to: c.value, t0: c.t, dur: c.dur, ease: c.ease };
       onSet?.(c, o.props[c.prop]);
     } else if (c.op === 'remove') {
       objs.delete(c.id);
@@ -45,7 +43,7 @@ function replay(timeline, tMs, onSet) {
 }
 
 /**
- * Returns { nodes: [{id, shape, label, x, y, color}], edges: [{id, a, b, directed, color}] } at time tMs.
+ * Returns { nodes: [{id, shape, label, x, y, size, color}], edges: [{id, a, b, directed, color}] } at time tMs.
  * Commands must be sorted by t (the timeline appends them in clock order).
  */
 export function sceneAt(timeline, tMs) {
@@ -53,7 +51,7 @@ export function sceneAt(timeline, tMs) {
   for (const o of replay(timeline, tMs).values()) {
     const v = {};
     for (const [k, tw] of Object.entries(o.props)) v[k] = valueAt(tw, k, tMs);
-    if (o.kind === 'node') state.nodes.push({ id: o.id, shape: v.shape ?? 'circle', label: v.label, x: v.pos.x, y: v.pos.y, color: v.color });
+    if (o.kind === 'node') state.nodes.push({ id: o.id, shape: v.shape ?? 'circle', label: v.label, x: v.pos.x, y: v.pos.y, size: v.size ?? 1, color: v.color });
     else state.edges.push({ id: o.id, a: v.a, b: v.b, directed: !!v.directed, color: v.color });
   }
   return state;
@@ -78,7 +76,7 @@ export function frameTimes(durationMs, fps) {
 /** Converts an editor Scene into the same state shape the player produces. */
 export function sceneToState(scene) {
   return {
-    nodes: scene.nodes().map(({ id, shape, label, x, y, color }) => ({ id, shape: shape ?? 'circle', label, x, y, color })),
+    nodes: scene.nodes().map(({ id, shape, label, x, y, size, color }) => ({ id, shape: shape ?? 'circle', label, x, y, size: size ?? 1, color })),
     edges: scene.edges().map(({ id, a, b, directed, color }) => ({ id, a, b, directed: !!directed, color })),
   };
 }

@@ -71,9 +71,6 @@ h1 { margin: 0; font-size: 1.3rem; }
 .tools svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .tools svg .dot { fill: currentColor; stroke: none; }
 .tools .sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
-.tools svg .faint { opacity: 0.45; }
-.tools[data-mode="stage"] .behaviour-only { display: none; }
-.tools [data-tool="push"][aria-pressed="true"] { background: var(--accent-2); }
 
 .panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -157,8 +154,16 @@ input[type=text], input[type=number], select {
   font: inherit; font-size: 0.9rem; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
 }
 input[type=number] { width: 4.5em; }
-.inspector input { width: 9em; }
-#selection { color: var(--muted); font-size: 0.9rem; min-width: 7em; }
+.inspector input, .toolbar #label { width: 7em; }
+#selection { color: var(--text); font-size: 0.9rem; font-weight: 600; min-width: 7em; }
+.tools button:disabled { opacity: 0.3; background: none; }
+.spacer { flex: 1; }
+.arrange { display: inline-flex; gap: 1px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; }
+.arrange button { width: 26px; height: 26px; padding: 0; border: none; border-radius: 6px; background: none; color: var(--muted); display: grid; place-items: center; }
+.arrange button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.arrange svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.arrange .gap { width: 1px; margin: 4px 3px; background: var(--border); }
+.size-input { width: 4.8em; }
 
 /* ---------- Behaviour ---------- */
 .subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 8px 0 4px; }
@@ -169,7 +174,7 @@ input[type=number] { width: 4.5em; }
 
 .palette { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .actions { margin: 4px 0 10px; }
-.actions input { width: 8em; }
+.actions input[type=text] { width: 8em; }
 .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); }
 .swatch { transition: transform 0.12s; }
 .swatch:hover:not(:disabled) { box-shadow: 0 0 0 2px var(--accent); transform: scale(1.12); }

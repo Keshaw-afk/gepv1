@@ -5,6 +5,19 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 
 ---
 
+
+> **Round after v1.1.0 (uncommitted work until committed; not released).** At the user's request:
+> **removed** `tree_layout`, `push`, `simulate`, rules (spread/fall/drift/towards), the Push tool, Tidy tree,
+> Let it move and the rotation/untangle/rules examples (`core/layout.js`, `core/motion.js`, their tests and
+> tools are gone). **Added:** `size(id, s, dur?, ease?)` and `node(..., size)` (0.25 to 5; SVG `scale()`; animated
+> SVG scales an inner group); lasso and multi-select, group move, resize handle and Size field (Stage and
+> Steps), align/spread (`core/arrange.js`), duplicate, copy/paste, nudge, snap-to-grid, undo/redo and
+> autosave (`web/history.js`, localStorage `gepv1.project`), New project. A step on several objects is
+> several steps with `together`. Copy does not keep colour (the stage has no colour). Sections 2 to 5 below
+> still describe v1.1.0 where they mention the removed features: read those as history.
+> **Release note for the user:** scripts using the removed functions stop working, so ask whether this is a
+> MAJOR bump (2.0.0) before `npm version`.
+
 ## 1. Where things stand
 
 - Current release: **v1.1.0** (2026-11-17, tagged and pushed to the private GitHub repo `gepv1`).
@@ -110,11 +123,9 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 51 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
+| `npm test` | 50 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
-| `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 7 cases | open in Chrome: title says `34412 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
-| `npm run check:layout` | crossings / closest pair / bounds at the end of `examples/untangle.lua` | 0 crossings, closest 63 |
-| `npm run tune:spread` | the "spread" rule on 5 test graphs | see the header of `tools/spread_tune.mjs` |
+| `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 4 cases (dfs, network, edge, sizes) | open in Chrome: title says `17019 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
 
 - `check:animated --web` writes `web/_check.html` instead (served by `npm start`, handy for browser
   automation; it's git-ignored, delete it afterwards). The check must run after page load: SMIL

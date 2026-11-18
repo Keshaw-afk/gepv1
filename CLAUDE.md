@@ -14,7 +14,6 @@ npm start                 # http://localhost:8080 ; to show the user: xdg-open h
 npm test                  # node:test, all must pass
 npm run check:pixels      # renderer vs v1.0.0 in librsvg (needs ffmpeg with librsvg)
 npm run check:animated    # writes out/animated_check.html; open in Chrome, read the title
-npm run check:layout      # crossings etc. at the end of examples/untangle.lua
 node node/cli.js stage.lua script.lua --trace --frame N out.svg --svg anim.svg --video out.mp4
 ```
 

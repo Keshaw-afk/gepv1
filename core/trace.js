@@ -14,7 +14,7 @@ function describe(cmd) {
   if (cmd.op === 'create') return `create ${cmd.props.directed ? 'arrow' : 'edge'} ${name}`;
   if (cmd.op === 'remove') return `remove ${name}`;
   const v = cmd.prop === 'pos' ? `(${Math.round(cmd.value.x)},${Math.round(cmd.value.y)})` : cmd.value;
-  const how = cmd.motion ? ` simulate ${cmd.motion}` : cmd.ease ? ` ${cmd.ease}` : '';
+  const how = cmd.ease ? ` ${cmd.ease}` : '';
   return `set ${name}.${cmd.prop} -> ${v}  dur=${sec(cmd.dur)}${how}`;
 }
 
