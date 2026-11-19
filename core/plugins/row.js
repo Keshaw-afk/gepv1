@@ -1,5 +1,5 @@
 // make_row: a row of labelled boxes, e.g. an array to sort or a stack.
-import { runTool, ToolError } from '../ai_tools.js';
+import { runTool, endState, ToolError } from '../ai_tools.js';
 import { CANVAS } from '../scene.js';
 import { listOf } from './util.js';
 
@@ -18,8 +18,11 @@ export default {
     const step = Math.min(90, (CANVAS.width - 80) / values.length);
     const x0 = CANVAS.width / 2 - (step * (values.length - 1)) / 2;
     const width = Math.min(64, Math.round(step - 10));
+    // without a y: the middle line, or the first free line above or below it (don't cover a row)
+    const taken = [...endState(p).values()].filter((o) => o.kind === 'node').map((o) => o.y);
+    const y = a.y ?? [180, 260, 100, 320, 40].find((ly) => taken.every((ty) => Math.abs(ty - ly) >= 50)) ?? 180;
     const names = values.map((v, i) => {
-      const reply = runTool(p, 'add', { shape: 'box', label: String(v), x: Math.round(x0 + i * step), y: a.y ?? CANVAS.height / 2, color: a.color, width });
+      const reply = runTool(p, 'add', { shape: 'box', label: String(v), x: Math.round(x0 + i * step), y, color: a.color, width, duplicate: true });
       return / so it is called (.+?)\)/.exec(reply)?.[1] ?? String(v);
     });
     return `Made a row of ${values.length} boxes: ${names.join(', ')} (left to right, ${Math.round(step)} px apart). Use swap to exchange two of them.`;

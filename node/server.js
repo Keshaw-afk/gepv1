@@ -150,8 +150,41 @@ async function handleToolResult(req, res) {
   }
 }
 
+// ---------- The in-app assistant: chat requests to an OpenAI-compatible API ----------
+// Relayed here (no CORS trouble in the browser); the key goes only to the provider the user chose.
+async function handleLlm(req, res) {
+  try {
+    const { baseUrl, apiKey, body } = JSON.parse(await readBody(req));
+    const base = new URL(String(baseUrl || 'https://api.openai.com/v1'));
+    if (!['http:', 'https:'].includes(base.protocol)) throw new Error('the base URL must start with http:// or https://');
+    const r = await fetch(`${base.href.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(apiKey && { Authorization: `Bearer ${apiKey}` }) },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
+    });
+    const text = await r.text();
+    res.writeHead(r.status, { 'Content-Type': r.headers.get('content-type') ?? 'application/json' });
+    res.end(text);
+  } catch (e) {
+    sendJson(res, 502, { error: { message: `Could not reach the AI: ${e.cause?.message ?? e.message}` } });
+  }
+}
+
+/**
+ * The /api routes change the project or call out: only this app's own pages (or a program with no
+ * Origin, like node/mcp.js) may use them. JSON only, so another site's form can't post here.
+ */
+function trusted(req) {
+  const origin = req.headers.origin;
+  if (origin && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return false;
+  return req.method !== 'POST' || /^application\/json\b/.test(req.headers['content-type'] ?? '');
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname.startsWith('/api/') && !trusted(req)) return sendJson(res, 403, { error: 'not allowed' });
+  if (req.method === 'POST' && url.pathname === '/api/llm') return handleLlm(req, res);
   if (req.method === 'POST' && url.pathname === '/api/export') return handleExport(req, res);
   if (req.method === 'POST' && url.pathname === '/api/tool') return handleTool(req, res);
   if (req.method === 'POST' && url.pathname === '/api/tool-result') return handleToolResult(req, res);

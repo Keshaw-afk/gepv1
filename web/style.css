@@ -261,3 +261,16 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 
 /* the AI is editing: a quiet line under the status, in the accent colour */
 .ai-note { margin: -4px 0 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+
+/* the assistant: a quiet chat; your words on the right, tool calls as small ticks */
+.chat { list-style: none; margin: 8px 0; padding: 0; max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.chat li { font-size: 0.88rem; line-height: 1.4; padding: 6px 9px; border-radius: 8px; overflow-wrap: anywhere; }
+.chat .you { align-self: flex-end; background: var(--accent); color: #fff; max-width: 85%; }
+.chat .ai { background: var(--bg); }
+.chat .tool { font-size: 0.78rem; padding: 1px 9px; color: var(--muted); }
+.chat .tool.failed { color: var(--accent-2); }
+.chat .thinking { font-size: 0.8rem; color: var(--muted); font-style: italic; }
+.chat .error { background: var(--error-bg); color: var(--error); }
+.ask textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.9rem; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+#ai-settings label { display: flex; flex-direction: column; gap: 2px; font-size: 0.85rem; margin: 6px 0; }
+#ai-settings input { font: inherit; font-size: 0.85rem; padding: 4px 6px; }

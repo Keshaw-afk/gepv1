@@ -68,3 +68,14 @@ test('throw: a parabola through the top, landing exactly; it runs in the engine'
   assert.match(describeProject(p), /Keyframe 1 \(1 s\): ball moves along a curve to \(560, 300\)/);
   assert.throws(() => runTool(p, 'throw', { label: 'nope', x: 1, y: 1 }), (e) => e instanceof ToolError && /No object called "nope"/.test(e.message));
 });
+
+test('forgiving plugins: a second row goes on a free line; swapping a box twice in a keyframe makes a new one', () => {
+  const p = newProject();
+  runTool(p, 'make_row', { values: [5, 2] });
+  runTool(p, 'make_row', { values: [2, 5] });
+  const ys = [...endState(p).values()].map((o) => o.y);
+  assert.deepEqual(ys, [180, 180, 260, 260]);
+  runTool(p, 'swap', { a: '5', b: '2' });
+  assert.match(runTool(p, 'swap', { a: '2', b: '5' }), /already moving in the last keyframe, so this swap got a new keyframe/);
+  assert.equal(keyframes(p.steps).length, 2);
+});

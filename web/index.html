@@ -70,6 +70,7 @@
         <div class="subtabs" role="tablist">
           <button type="button" role="tab" data-sub="steps" aria-selected="true">Picture and steps</button>
           <button type="button" role="tab" data-sub="code" aria-selected="false">Code <span id="code-badge" class="badge"></span></button>
+          <button type="button" role="tab" data-sub="assistant" aria-selected="false">✦ Assistant</button>
         </div>
 
         <div data-subpanel="steps">
@@ -110,6 +111,26 @@
             <summary>stage.lua and steps.lua (generated)</summary>
             <pre id="stage-code" class="code"></pre>
             <pre id="steps-code" class="code"></pre>
+          </details>
+        </div>
+
+        <div data-subpanel="assistant" hidden>
+          <p class="hint">Describe an animation; the AI builds it as keyframes you can edit. It uses your own API key.</p>
+          <ol id="chat" class="chat" aria-live="polite"></ol>
+          <form id="ask" class="ask">
+            <textarea id="prompt" rows="3" placeholder="e.g. Show bubble sort on 5, 2, 8, 1" aria-label="what to animate"></textarea>
+            <div class="toolbar">
+              <button id="send" type="submit" class="primary">Send</button>
+              <button id="stop" type="button" hidden>Stop</button>
+              <button id="new-chat" type="button">New chat</button>
+            </div>
+          </form>
+          <details id="ai-settings">
+            <summary>AI settings</summary>
+            <label>Base URL <input id="ai-base" type="url" placeholder="https://api.openai.com/v1" spellcheck="false"></label>
+            <label>Model <input id="ai-model" type="text" placeholder="gpt-4o-mini" spellcheck="false"></label>
+            <label>API key <input id="ai-key" type="password" autocomplete="off" placeholder="sk-… (not needed for Ollama)"></label>
+            <p class="hint">Any OpenAI-compatible API: OpenAI, OpenRouter, Ollama (<code>http://localhost:11434/v1</code>), LM Studio. Kept in this browser only.</p>
           </details>
         </div>
 

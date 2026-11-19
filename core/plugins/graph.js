@@ -22,7 +22,7 @@ export default {
     const name = new Map();
     nodes.forEach((v, i) => {
       const t = -Math.PI / 2 + (2 * Math.PI * i) / nodes.length;
-      const reply = runTool(p, 'add', { shape: 'circle', label: v, x: Math.round(cx + r * Math.cos(t)), y: Math.round(cy + r * Math.sin(t)) });
+      const reply = runTool(p, 'add', { shape: 'circle', label: v, x: Math.round(cx + r * Math.cos(t)), y: Math.round(cy + r * Math.sin(t)), duplicate: true });
       name.set(v, / so it is called (.+?)\)/.exec(reply)?.[1] ?? v);
     });
     for (const [x, y] of edges) runTool(p, 'connect', { from: name.get(x), to: name.get(y), arrow: !!a.arrows });

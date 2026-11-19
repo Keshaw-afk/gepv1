@@ -15,11 +15,15 @@ npm test                  # node:test, all must pass
 npm run check:pixels      # renderer vs v1.0.0 in librsvg (needs ffmpeg with librsvg)
 npm run check:animated    # writes out/animated_check.html; open in Chrome, read the title
 node node/cli.js stage.lua script.lua --trace --frame N out.svg --svg anim.svg --video out.mp4
+claude mcp add gepv1 -- node $PWD/node/mcp.js   # the AI tools over MCP (core/ai_tools.js + plugins)
 ```
 
 ## Rules of the house
 
 - The GUI only generates plain Lua API calls (`stage.lua`, `steps.lua`); never a separate format.
+- AI tools stay very easy for a simple AI: labels not ids, optional args, replies that say what to do
+  next, errors that say how to fix the call. Plugins are built only from the core tools.
+- Restart `npm start` after changing `core/` or `node/`: the server keeps the modules it loaded.
 - New API function → add it to `API_NAMES` in `core/lua_api.js`, the ARCHITECTURE API list and the
   API hint in `web/index.html`.
 - Anything that moves must stay exact in every frame: record commands, bake simulations, and keep

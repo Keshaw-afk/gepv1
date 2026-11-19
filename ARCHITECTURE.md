@@ -159,6 +159,42 @@ it is no change in the timeline, no moment and no trace line.
 
 ---
 
+## 3b. Built by an AI (tools, plugins, MCP, assistant)
+
+GEPV1's aim is **academic animations built by an AI** through a procedure we provide. The AI never writes
+Lua; it calls tools that write the same scene + keyframe steps as the GUI, so the result is editable.
+
+- `core/ai_tools.js`: the 9 core tools (`TOOLS`), `runTool(project, name, args)`, `describeProject`,
+  `RECIPE` (the whole manual, used as MCP instructions and the assistant's system prompt).
+  - A project is `{ scene, steps, cursor, seconds }`. `cursor` is `'start'` (building the starting
+    picture), `'new'` (the next change begins a keyframe) or `'in'` (changes join the last keyframe).
+    Changes go through `recordSteps`.
+  - It is made for a simple AI:
+    - objects are named by label (case-insensitive, `'` matches `′`; a line is "A-B");
+    - x/y are optional (a free grid spot);
+    - arguments are forgiving (numbers as strings, JSON strings, "square", "light grey");
+    - `add` with a label that exists changes that object instead (`duplicate: true` really adds one);
+    - repeated labels get primes (3, 3′);
+    - replies say what changed and what to do next; errors (`ToolError`) say how to fix the call.
+- `core/plugins/`: `make_row`, `make_tree`, `make_graph`, `swap`, `throw`. Each one is built only from
+  the core tools (`runTool`), and importing `core/plugins/index.js` registers them.
+- **Live link** (`node/server.js`): the open tab owns the project.
+  - A tool call (`POST /api/tool`) is sent to the newest tab over server-sent events (`GET /api/live`).
+    The tab runs it with `runAiTool` in web/app.js (one undo step, an "AI is editing" note) and posts
+    the reply to `/api/tool-result`.
+  - With no tab open, the server runs `xdg-open` on the app and waits 10 s.
+  - `show` also returns the end picture: the tab renders the SVG and the server rasterises it with
+    ffmpeg (librsvg) into a PNG.
+  - `/api/*` only accepts JSON from this app's origin, or from a program with no Origin header.
+- `node/mcp.js`: the MCP server (stdio, `@modelcontextprotocol/sdk`). It lists `TOOLS` with plain JSON
+  schemas, uses `RECIPE` as its instructions, forwards calls to `/api/tool`, and starts the app server
+  (detached) if nothing answers.
+- `web/assistant.js`: the in-app chat. It speaks the OpenAI chat API with the same tools through
+  `POST /api/llm` (relayed by the server). Settings are kept in localStorage `gepv1.assistant`.
+  - For local servers (localhost) it sends `reasoning_effort: "none"`: small models are far faster and
+    call tools reliably without reasoning first.
+  - If the model describes a plan without calling a tool, it gets one nudge.
+
 ## 4. Components
 
 ```

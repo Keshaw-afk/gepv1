@@ -17,6 +17,7 @@ import { frameAt, landmarks, renderFrame, frameName } from '../core/frames.js';
 import { Editor } from './editor.js';
 import { runTool } from '../core/ai_tools.js';
 import '../core/plugins/index.js'; // registers the plugin tools
+import { setupAssistant } from './assistant.js';
 import { History } from './history.js';
 import { CodeView } from './codeview.js';
 
@@ -1063,6 +1064,8 @@ function noteAi(name, args) {
   clearTimeout(aiNoteTimer);
   aiNoteTimer = setTimeout(() => { note.hidden = true; }, 4000);
 }
+
+setupAssistant({ runTool: runAiTool });
 
 if (typeof EventSource === 'function') {
   const live = new EventSource('/api/live');

@@ -38,7 +38,7 @@ test('the recipe example builds a starting picture and keyframes that run in the
 test('objects added in a keyframe appear there, with their colour; free spots; duplicate labels', () => {
   const p = newProject();
   go(p, [['add', { shape: 'circle', label: 'A' }], ['next_keyframe']]);
-  const r = runTool(p, 'add', { shape: 'triangle', label: 'a', color: 'green' });
+  const r = runTool(p, 'add', { shape: 'triangle', label: 'a', color: 'green', duplicate: true });
   assert.match(r, /"a" was taken, so it is called a′/);
   const a = endState(p);
   const [first, second] = [...a.values()];
@@ -87,4 +87,15 @@ test('show describes the picture and keyframes; every tool has a schema', () => 
     assert.equal(schemaOf(t).type, 'object');
     assert.ok(t.description.length > 20, t.name);
   }
+});
+
+test('add with a label that exists changes that object instead (what a simple AI usually means)', () => {
+  const p = newProject();
+  runTool(p, 'add', { shape: 'circle', label: 'C', x: 100, y: 100 });
+  runTool(p, 'next_keyframe');
+  const r = runTool(p, 'add', { shape: 'circle', label: 'c', x: 300, y: 80, color: 'red' });
+  assert.match(r, /^C already exists, so it was changed instead: C moves from \(100, 100\) to \(300, 80\) in keyframe 1; C turns red in keyframe 1\. To change an object/);
+  assert.equal(p.scene.nodes().length, 1);
+  assert.deepEqual(p.steps.map((s) => s.op), ['move', 'color']);
+  assert.match(runTool(p, 'add', { shape: 'circle', label: 'C' }), /C already exists, so nothing was added/);
 });

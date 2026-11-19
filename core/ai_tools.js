@@ -157,6 +157,21 @@ function record(p, changes) {
   p.cursor = 'in';
 }
 
+/**
+ * add with a label that already exists: a simple AI usually means "make it like this" (move it, colour
+ * it), so do that instead of making a second one, and say how to do it next time.
+ */
+function addExisting(p, obj, a) {
+  const args = { label: obj.label };
+  const moved = a.x !== undefined && a.x !== '' && a.y !== undefined && a.y !== '' && (Number(a.x) !== obj.x || Number(a.y) !== obj.y);
+  const said = [];
+  if (moved) said.push(runTool(p, 'move', { ...args, x: a.x, y: a.y }).split('. ')[0]);
+  if (a.color || a.width || a.height) said.push(runTool(p, 'change', { ...args, color: a.color, width: a.width, height: a.height }).split('. ')[0]);
+  const tip = 'To change an object that exists, use move or change; to really add a second one, pass "duplicate": true.';
+  if (!said.length) return `${obj.label} already exists, so nothing was added. ${tip}`;
+  return `${obj.label} already exists, so it was changed instead: ${said.join('; ')}. ${tip}`;
+}
+
 const NEXT_AT_START = 'Next: add more objects, or next_keyframe to start animating.';
 const NEXT_IN_FRAME = 'Next: more changes for this keyframe (they play together), or next_keyframe.';
 const next = (p) => (p.cursor === 'start' ? NEXT_AT_START : NEXT_IN_FRAME);
@@ -190,12 +205,15 @@ export const TOOLS = [
       color: S('optional colour', { enum: COLORS }),
       width: N('optional width in pixels (circle 48, box 64, triangle 56 by default)'),
       height: N('optional height in pixels (circle 48, box 40, triangle 48 by default)'),
+      duplicate: { type: 'boolean', description: 'only if you really want a second object with a label that is already used' },
     },
     required: ['shape', 'label'],
     run(p, a) {
       const shape = shapeOf(a.shape);
       if (a.label === undefined || String(a.label).trim() === '') throw new ToolError('add needs a label, e.g. "A".');
       const objs = endState(p);
+      const same = [...objs.values()].find((o) => o.kind === 'node' && o.label.toLowerCase() === String(a.label).trim().toLowerCase());
+      if (same && !a.duplicate) return addExisting(p, same, a);
       const label = uniqueLabel(objs, String(a.label).trim());
       const spot = freeSpot(objs);
       const x = X(a.x, spot.x), y = Y(a.y, spot.y);
@@ -427,4 +445,5 @@ export const RECIPE = `You make short academic animations (diagrams of circles, 
 3. next_keyframe, then make the changes that happen together (move, change, add, connect, remove).
 4. Repeat step 3 for each moment of the animation.
 5. show to check it. Refer to objects by their labels; a line is "A-B".
+Shortcuts: make_row for arrays (then swap two boxes per keyframe to sort), make_tree for trees, make_graph for graphs (BFS, DFS), throw for a projectile arc.
 Example: start_over; add {shape: "circle", label: "A", x: 100, y: 180}; add {shape: "circle", label: "B", x: 300, y: 180}; connect {from: "A", to: "B"}; next_keyframe; change {label: "A", color: "red"}; next_keyframe; move {label: "A", x: 200, y: 80}.`;

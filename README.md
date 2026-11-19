@@ -56,6 +56,26 @@ In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where 
 `remove(id)` makes it disappear and `size(id, w, h, dur)` makes a node wider and/or taller about its
 centre (factors 0.25 to 5; `size(id, 2)` = both ×2; `rect("A", x, y, 3, 1)` starts stretched). Sizes show in frames, the animated SVG and the MP4.
 
+## Use it with an AI
+
+GEPV1 is aimed at **academic animations** (diagrams of circles, boxes, triangles, text, lines and
+arrows). An AI can build them with a small set of tools; what it makes is ordinary Start + keyframes,
+so you can click any keyframe and edit it.
+
+- **Tools:** `start_over`, `add`, `connect`, `next_keyframe`, `move` (with `via` for a curve), `change`,
+  `remove`, `pause`, `show`. Objects are named by their labels. Positions are optional, and every
+  reply says what changed and what to do next.
+- **Plugins** do the diagram thinking in one call: `make_row` (arrays), `make_tree`, `make_graph`,
+  `swap` (two boxes trade places in arcs), `throw` (a projectile arc).
+- **Over MCP** (Claude Code, Claude Desktop, any MCP client):
+  `claude mcp add gepv1 -- node /path/to/gepv1/node/mcp.js`. It starts the app server if needed and
+  opens the app in your browser; you watch the AI build the animation there.
+  - Claude Desktop JSON: `{"mcpServers": {"gepv1": {"command": "node", "args": ["/path/to/gepv1/node/mcp.js"]}}}`
+- **In the app:** Build → **✦ Assistant**. Under *AI settings*, give any OpenAI-compatible API: OpenAI
+  (base URL `https://api.openai.com/v1`, your key), OpenRouter, or a local Ollama / LM Studio
+  (`http://localhost:11434/v1`, no key). The key stays in your browser; requests go through the local
+  server to that provider only.
+
 ## CLI
 
 ```sh
