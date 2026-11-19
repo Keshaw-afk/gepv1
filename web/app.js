@@ -357,9 +357,15 @@ for (const c of PALETTE) {
   $('palette').append(b);
 }
 
+// A duration typed into a field, in ms: 0.1 to 10 s, the default 0.5 s when empty or not a number.
+// (A change that takes 0 s can't be seen happening: a curved move would just jump to its end.)
+const MIN_DUR = 100;
+function seconds(text) {
+  const v = String(text).trim() === '' ? NaN : Number(text);
+  return Math.round(Math.min(10, Math.max(MIN_DUR / 1000, Number.isFinite(v) ? v : 0.5)) * 1000);
+}
 function stepDur() {
-  const v = Number($('dur').value);
-  return Math.round(Math.min(10, Math.max(0, Number.isFinite(v) ? v : 0.5)) * 1000);
+  return seconds($('dur').value);
 }
 
 let justAdded = new Set(); // the steps that slide into the list
@@ -525,11 +531,10 @@ function renderSteps() {
   };
   const durField = (value, set) => {
     const dur = el('input');
-    Object.assign(dur, { type: 'number', min: 0, max: 10, step: 0.1, value: value / 1000, title: 'seconds' });
+    Object.assign(dur, { type: 'number', min: MIN_DUR / 1000, max: 10, step: 0.1, value: value / 1000, title: 'seconds' });
     dur.setAttribute('aria-label', 'duration in seconds');
     dur.addEventListener('change', () => {
-      const v = Number(dur.value);
-      set(Math.round(Math.min(10, Math.max(0, Number.isFinite(v) ? v : 0)) * 1000));
+      set(seconds(dur.value));
       stepsChanged();
     });
     const label = el('label');
@@ -921,11 +926,14 @@ const snapshot = () => JSON.stringify({ v: 1, scene: editor.scene, steps, script
 
 const autosave = (text) => { try { localStorage.setItem(SAVE_KEY, text); } catch { /* private window or storage full: just no autosave */ } };
 
+// Moves saved with 0 s (an empty Duration field used to mean 0) get the default, so they can be seen.
+const visibleMoves = (list) => list.map((s) => ((s.op === 'path' || s.op === 'move') && !(s.dur > 0) ? { ...s, dur: 500 } : s));
+
 function restoreProject(text) {
   autosave(text); // undo and redo are saved too, so a reload shows what you see
   const p = JSON.parse(text);
   editor.setScene(Scene.from(p.scene)); // (this prunes the old steps; they are replaced next)
-  steps = p.steps;
+  steps = visibleMoves(p.steps);
   scriptBox.value = p.script ?? '';
   point = Math.min(point, steps.length);
   renderSteps();
@@ -983,7 +991,7 @@ function restoreSaved() {
     const p = JSON.parse(text);
     if (p.v !== 1) return false;
     editor.setScene(Scene.from(p.scene));
-    steps = Array.isArray(p.steps) ? p.steps : [];
+    steps = visibleMoves(Array.isArray(p.steps) ? p.steps : []);
     scriptBox.value = p.script ?? '';
     return true;
   } catch {

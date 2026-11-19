@@ -17,7 +17,10 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 > **After v2.0.0:** Build has two modes. **Arrange** records nothing: at Start it edits the stage, at a later
 > point it adjusts the step that decides the property there (`sourceOf`, `reshapePath` in core/steps.js) or the
 > stage. **Record** makes steps; a bent drag becomes `path(id, {{x, y}, …}, dur)` (core/paths.js, even speed).
-> `point` is now 0..n (0 = Start; no more null). Record works in **keyframes** (`recordSteps`, `keyframes`,
+> `point` is now 0..n (0 = Start; no more null).
+> Durations in the GUI are 0.1–10 s (`seconds()` in web/app.js; an empty field = 0.5 s). It used to read an
+> empty field as 0, so curved moves were saved with 0 s and jumped; `visibleMoves` gives saved 0 s moves 0.5 s.
+> **Restart `npm start` after changing core/**: the server keeps the core modules it loaded (MP4 export). Record works in **keyframes** (`recordSteps`, `keyframes`,
 > `keepKeyframes` in core/steps.js): changes join the current keyframe until Next keyframe (N); the steps
 > list shows Keyframe 1, 2… with their changes. The old per-step "with previous" select is gone.
 > **Third pass:** Stage and Behaviour are one **Build** tab (tabs: Build → Result). The steps list starts
