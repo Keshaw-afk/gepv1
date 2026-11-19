@@ -250,3 +250,11 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 .tools .modes [data-mode="arrange"][aria-pressed="true"] { background: var(--accent); color: #fff; }
 .tools .modes [data-mode="record"][aria-pressed="true"] { background: var(--accent-2); color: #fff; }
 .editor.recording { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2-soft); }
+
+/* keyframes: a header row, its changes indented under it */
+.steps li.keyframe .what b { font-weight: 600; }
+.steps li.keyframe .rec { color: var(--accent-2); font-size: 0.8rem; font-weight: 600; }
+.steps li.change { padding-top: 1px; padding-bottom: 1px; }
+.steps li.change .what { padding-left: 10px; border-left: 2px solid var(--border); }
+.steps li.change.in-current .what { border-left-color: var(--accent); }
+.steps li.pause .num { color: var(--muted); }

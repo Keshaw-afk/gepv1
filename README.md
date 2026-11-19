@@ -24,11 +24,13 @@ The page has two tabs: **Build → Result**.
      is the starting picture. At a later step a change adjusts whatever already decides it there: the
      move or size step that put the object there (a curved move bends to its new end), the step that
      added it, or the starting picture. New objects go into the starting picture.
-   - **● Record:** every change becomes a step inserted at that point: pick a colour, drag to move
-     (**drag in a curve for a curved move**, smoothed, at even speed over the Duration), resize, add or
-     connect objects, remove things, line up a selection, add pauses. A change to several selected
-     objects is several steps that play together; each step plays after the previous one, or "with
-     previous". If a new step removes something later steps used, those steps go and a note says so.
+   - **● Record:** changes are recorded in **keyframes**. Everything you change goes into the current
+     keyframe and plays together: drag A, drag B, colour C, and all three happen at once. Press **Next
+     keyframe ▸** (or N) to start the next one; it plays after this one. Dragging the same object again
+     in a keyframe carries its move on (one move through both places); a new colour or size replaces
+     the old one. **Drag in a curve for a curved move** (smoothed, at even speed). Click a keyframe to
+     record into it again; each keyframe has its duration, and pauses sit between keyframes. If a new
+     step removes something later steps used, those steps go and a note says so.
 
    Everywhere: **draw a loop on empty space** to lasso several objects (a quick straight drag selects the
    box between its ends; Ctrl/Cmd-click adds one; Ctrl+A selects all), then move, colour, delete, duplicate

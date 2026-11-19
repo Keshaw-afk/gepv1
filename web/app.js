@@ -4,7 +4,7 @@
 
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
-import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, sourceOf, reshapePath, INSTANT, RUNS_TIME } from '../core/steps.js';
+import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, sourceOf, reshapePath, keyframes, keyframeEndAt, keepKeyframes, removeStep, recordSteps, INSTANT, RUNS_TIME } from '../core/steps.js';
 import { Scene, DEFAULT_EDGE_COLOR } from '../core/scene.js';
 import { sizeOf, defaultColor } from '../core/shapes.js';
 import { ARRANGE_KINDS } from '../core/arrange.js';
@@ -24,7 +24,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
   arrange: 'Arrange: nothing is recorded · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
-  record: 'Record: every change becomes a step · Drag in a curve for a curved move · Pick a colour · Handles: resize · Shapes add objects · Ctrl+Z: undo',
+  record: 'Record: changes go into the current keyframe and play together · N: next keyframe · Drag in a curve for a curved move · Drag again to carry on a move · Ctrl+Z: undo',
   start: 'The starting picture · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   steps: 'Every change here becomes a step · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects · Ctrl+Z: undo',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
@@ -38,6 +38,8 @@ let steps = [];
 // moved, sized, coloured or added the object).
 let point = 0;
 let mode = 'arrange';
+// Record: changes join the keyframe that ends at the point, until "Next keyframe" starts a new one
+let newKeyframe = false;
 const recording = () => mode === 'record';
 const stageEditing = () => mode === 'arrange' && point === 0; // the editor edits the Scene directly
 
@@ -159,10 +161,12 @@ function syncInspector() {
     b.title = recording() ? 'The selection disappears at this step (Delete)' : 'Delete the selection for good (Delete)';
   }
   for (const b of $('palette').children) b.disabled = !sel.length;
-  $('dur').disabled = $('pause').disabled = !recording();
+  $('dur').disabled = $('pause').disabled = $('next-key').disabled = !recording();
   const where = point === 0 ? 'the start' : `step ${point}`;
   $('target').innerHTML = recording()
-    ? `<b>Recording</b> after ${where}: every change becomes a step there. Drag in a curve for a curved move.`
+    ? newKeyframe || point === 0 || steps[point - 1]?.op === 'wait'
+      ? `<b>Recording</b> a new keyframe after ${where}. Everything you change now plays together.`
+      : `<b>Recording</b> into keyframe ${keyframes(steps).filter((f) => steps[f.start].op !== 'wait' && f.end <= point).length}: everything you change plays together. <b>Next keyframe</b> (N) when it is done.`
     : point === 0
       ? '<b>Arranging</b> the starting picture: place, drag, resize and colour freely. Nothing is recorded.'
       : `<b>Arranging</b> at ${where}: nothing is recorded; a change adjusts the step (or the starting picture) that put things there.`;
@@ -302,7 +306,7 @@ function deleteUnrecorded() {
   for (const id of editor.selectedIds()) {
     if (editor.scene.get(id)) { editor.scene.remove(id); continue; }
     const j = steps.findIndex((s) => (s.op === 'add' || s.op === 'connect') && s.id === id);
-    if (j >= 0) { steps.splice(j, 1); if (j < point) point--; }
+    if (j >= 0) { steps = removeStep(steps, j); if (j < point) point--; }
   }
   editor.setSelection([]);
   everythingChanged();
@@ -359,25 +363,34 @@ function stepDur() {
 }
 
 let justAdded = new Set(); // the steps that slide into the list
-/** Inserts steps at the current point; several (a selection of many objects) play together. */
+/**
+ * Records changes at the current point: they join the keyframe there (a second change to the same
+ * thing updates it), or begin a new keyframe after "Next keyframe", at the start or after a pause.
+ */
 function addSteps(list) {
   if (!list.length) return;
-  const dur = stepDur();
-  const added = list.map((s, i) => ({ dur, together: i > 0, ...s }));
-  steps.splice(point, 0, ...added);
-  point += added.length;
-  justAdded = new Set(added);
+  const r = recordSteps(steps, point, list, { join: !newKeyframe, dur: stepDur() });
+  steps = r.steps;
+  point = r.point;
+  newKeyframe = false;
+  justAdded = new Set(r.added);
   stepsChanged();
   justAdded = new Set();
 }
 $('pause').addEventListener('click', () => addSteps([{ op: 'wait' }]));
+$('next-key').addEventListener('click', nextKeyframe);
+function nextKeyframe() {
+  if (!recording()) return;
+  newKeyframe = true;
+  renderSteps();
+  syncInspector();
+}
 $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); });
 
 /** Paste in Behaviour: the copies appear (and their lines), all at once. Returns their ids. */
 function pasteSteps(plan) {
-  const dur = stepDur();
-  const added = [];
-  const push = (s) => { const step = { dur, together: added.length > 0, ...s }; steps.splice(point++, 0, step); added.push(step); };
+  const changes = [];
+  const push = (s) => changes.push(s);
   const ids = plan.nodes.map((n) => {
     const id = nextStepId(steps);
     push({ op: 'add', id, shape: n.shape, label: n.label, x: n.x, y: n.y, size: n.size });
@@ -391,9 +404,7 @@ function pasteSteps(plan) {
   // the copies keep their colours: an instant colour step each, at the same moment
   plan.nodes.forEach((n, i) => { if (n.color && n.color !== defaultColor(n.shape)) push({ op: 'color', target: ids[i], color: n.color, dur: 0 }); });
   plan.edges.forEach((e, i) => { if (e.color && e.color !== DEFAULT_EDGE_COLOR) push({ op: 'color', target: lines[i], color: e.color, dur: 0 }); });
-  justAdded = new Set(added);
-  stepsChanged();
-  justAdded = new Set();
+  addSteps(changes);
   return [...ids, ...lines];
 }
 
@@ -403,7 +414,7 @@ function pasteSteps(plan) {
  */
 function prune() {
   const before = steps.length, upto = new Set(steps.slice(0, point));
-  steps = pruneSteps(steps, editor.scene);
+  steps = keepKeyframes(steps, pruneSteps(steps, editor.scene));
   point = steps.filter((s) => upto.has(s)).length;
   const dropped = before - steps.length;
   $('dropped-note').hidden = !dropped;
@@ -422,7 +433,8 @@ function stepsChanged({ keepSelection = false } = {}) {
 
 /** Work at a point: after the first k steps (0 = the start). */
 function setPoint(k) {
-  point = Math.max(0, Math.min(steps.length, k));
+  point = keyframeEndAt(steps, Math.max(0, Math.min(steps.length, k))); // always the end of a keyframe
+  newKeyframe = false;
   renderSteps();
   showPoint();
 }
@@ -506,10 +518,35 @@ function renderSteps() {
     li.classList.add('pickable');
     li.addEventListener('click', (e) => { if (!e.target.closest('input, select, button')) setPoint(k); });
   };
-  const marker = () => {
+  const marker = (text) => {
     const li = el('li', 'marker');
-    li.append(el('span', 'num', '▸'), el('span', 'what', 'New steps go here'));
+    li.append(el('span', 'num', '▸'), el('span', 'what', text));
     return li;
+  };
+  const durField = (value, set) => {
+    const dur = el('input');
+    Object.assign(dur, { type: 'number', min: 0, max: 10, step: 0.1, value: value / 1000, title: 'seconds' });
+    dur.setAttribute('aria-label', 'duration in seconds');
+    dur.addEventListener('change', () => {
+      const v = Number(dur.value);
+      set(Math.round(Math.min(10, Math.max(0, Number.isFinite(v) ? v : 0)) * 1000));
+      stepsChanged();
+    });
+    const label = el('label');
+    label.append(dur, ' s');
+    return label;
+  };
+  const removeButton = (i) => {
+    const b = el('button', 'x', '×');
+    b.type = 'button';
+    b.title = 'Remove';
+    b.addEventListener('click', () => {
+      steps = removeStep(steps, i);
+      if (i < point) point--;
+      point = keyframeEndAt(steps, point);
+      stepsChanged();
+    });
+    return b;
   };
 
   const start = el('li', `start${point === 0 ? ' current' : ''}`);
@@ -518,52 +555,49 @@ function renderSteps() {
   start.append(el('span', 'num', '●'), what);
   pick(start, 0);
   list.append(start);
-  if (recording() && point === 0) list.append(marker());
+  if (recording() && point === 0) list.append(marker(steps.length ? 'A new keyframe goes here' : 'Keyframe 1: make your first changes'));
 
-  steps.forEach((s, i) => {
-    const li = el('li');
-    const prev = steps[i - 1];
-    li.append(el('span', 'num', String(i + 1)), describe(s, names));
-    pick(li, i + 1);
-    if (point === i + 1) li.classList.add('current');
-
-    const remove = el('button', 'x', '×');
-    remove.type = 'button';
-    remove.title = 'Remove step';
-    remove.addEventListener('click', () => {
-      steps.splice(i, 1);
-      if (i < point) point--;
-      stepsChanged();
-    });
-    li.append(remove);
-
-    const opts = el('div', 'opts');
-    const dur = el('input');
-    Object.assign(dur, { type: 'number', min: 0, max: 10, step: 0.1, value: s.dur / 1000, title: 'seconds' });
-    dur.setAttribute('aria-label', 'duration in seconds');
-    dur.addEventListener('change', () => {
-      const v = Number(dur.value);
-      s.dur = Math.round(Math.min(10, Math.max(0, Number.isFinite(v) ? v : 0)) * 1000);
-      stepsChanged();
-    });
-    const durLabel = el('label');
-    durLabel.append(dur, ' s');
-    if (!INSTANT.has(s.op)) opts.append(durLabel);
-
-    if (!RUNS_TIME.has(s.op) && prev && !RUNS_TIME.has(prev.op)) {
-      const when = el('select');
-      when.setAttribute('aria-label', 'when');
-      when.append(new Option('after previous', ''), new Option('with previous', '1'));
-      when.value = s.together ? '1' : '';
-      when.addEventListener('change', () => { s.together = when.value === '1'; stepsChanged(); });
-      opts.append(when);
+  let n = 0;
+  for (const f of keyframes(steps)) {
+    const first = steps[f.start];
+    const here = point === f.end;
+    if (first.op === 'wait') { // a pause: one row
+      const li = el('li', `pause${here ? ' current' : ''}`);
+      const w = el('span', 'what');
+      w.append(el('b', null, 'Pause'));
+      li.append(el('span', 'num', '‖'), w, removeButton(f.start));
+      const opts = el('div', 'opts');
+      opts.append(durField(first.dur, (v) => { first.dur = v; }));
+      li.append(opts);
+      pick(li, f.end);
+      if (justAdded.has(first)) li.classList.add('new');
+      list.append(li);
+    } else {
+      n++;
+      const group = steps.slice(f.start, f.end);
+      const timed = group.filter((s) => !INSTANT.has(s.op));
+      const head = el('li', `keyframe${here ? ' current' : ''}`);
+      const w = el('span', 'what');
+      w.append(el('b', null, `Keyframe ${n}`));
+      if (recording() && here && !newKeyframe) w.append(el('span', 'rec', ' ● recording'));
+      head.append(el('span', 'num', String(n)), w);
+      if (timed.length) {
+        const opts = el('div', 'opts');
+        opts.append(durField(Math.max(...timed.map((s) => s.dur)), (v) => { for (const s of timed) s.dur = v; }));
+        head.append(opts);
+      }
+      pick(head, f.end);
+      list.append(head);
+      group.forEach((s, k) => {
+        const li = el('li', `change${here ? ' in-current' : ''}`);
+        li.append(el('span', 'num', ''), describe(s, names), removeButton(f.start + k));
+        pick(li, f.end);
+        if (justAdded.has(s)) li.classList.add('new');
+        list.append(li);
+      });
     }
-    li.append(opts);
-    if (s.together && prev && !RUNS_TIME.has(prev.op)) li.classList.add('together');
-    if (justAdded.has(s)) li.classList.add('new');
-    list.append(li);
-    if (recording() && point === i + 1) list.append(marker());
-  });
+    if (recording() && here && (newKeyframe || first.op === 'wait')) list.append(marker('The next keyframe goes here'));
+  }
   // keep the current point in view by scrolling the list only (scrollIntoView would move the whole page)
   const mark = list.querySelector('.marker') ?? list.querySelector('.current');
   if (mark && (mark.offsetTop < list.scrollTop || mark.offsetTop + mark.offsetHeight > list.scrollTop + list.clientHeight)) {
@@ -870,6 +904,8 @@ window.addEventListener('keydown', (e) => {
     if (stageEditing()) editor.nudge(dx, dy);
     else adjustMoves(editor.selectedNodes().map((nd) => ({ id: nd.id, x: nd.x + dx, y: nd.y + dy })));
     e.preventDefault();
+  } else if (key === 'n' && !e.shiftKey && recording()) {
+    nextKeyframe();
   } else if (key === 'g' && !e.shiftKey) {
     toggleSnap();
   } else if (TOOL_KEYS[key] && !e.shiftKey) {

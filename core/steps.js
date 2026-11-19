@@ -217,3 +217,93 @@ export function reshapePath(points, x, y) {
   const last = points.at(-1), dx = x - last.x, dy = y - last.y;
   return points.map((p, i) => ({ x: Math.round(p.x + (dx * (i + 1)) / points.length), y: Math.round(p.y + (dy * (i + 1)) / points.length) }));
 }
+
+// ---------- Keyframes ----------
+// A keyframe is a run of steps that start together: a step with together=false (or the first one)
+// begins one, and a pause is a keyframe of its own. They are what Record mode adds to.
+
+/** [{ start, end }] index ranges of the keyframes (end exclusive), in order. */
+export function keyframes(steps) {
+  const out = [];
+  steps.forEach((s, i) => {
+    const prev = steps[i - 1];
+    const begins = i === 0 || !s.together || RUNS_TIME.has(s.op) || RUNS_TIME.has(prev.op);
+    if (begins) out.push({ start: i, end: i + 1 }); else out.at(-1).end = i + 1;
+  });
+  return out;
+}
+
+/** The point at the end of the keyframe that holds step k-1 (0 stays the start). */
+export function keyframeEndAt(steps, k) {
+  if (k <= 0) return 0;
+  return keyframes(steps).find((f) => k - 1 >= f.start && k - 1 < f.end)?.end ?? steps.length;
+}
+
+/**
+ * After some steps were dropped (`after` keeps a subset of `before`, same objects, same order): every
+ * step stays in the keyframe it was in, so the one after a dropped first step begins that keyframe.
+ * Changes the steps in place and returns `after`.
+ */
+export function keepKeyframes(before, after) {
+  const frameOf = new Map();
+  keyframes(before).forEach((f, n) => { for (let i = f.start; i < f.end; i++) frameOf.set(before[i], n); });
+  after.forEach((s, i) => { if (s.together && (i === 0 || frameOf.get(after[i - 1]) !== frameOf.get(s))) s.together = false; });
+  return after;
+}
+
+/** Removes step i; if it began a keyframe, the next step of that keyframe begins it now. */
+export function removeStep(steps, i) {
+  const out = steps.map((s) => ({ ...s }));
+  const copies = out.slice();
+  out.splice(i, 1);
+  return keepKeyframes(copies, out);
+}
+
+const moves = new Set(['move', 'path']);
+function sameThing(s, c) {
+  if (s.target === undefined || s.target !== c.target) return false;
+  return (moves.has(s.op) && moves.has(c.op)) || (s.op === c.op && (s.op === 'color' || s.op === 'size'));
+}
+/** A second change to the same thing in one keyframe: a move carries on (one curve), the rest replace. */
+function merge(old, c) {
+  if (!moves.has(c.op)) return { ...old, ...c, dur: old.dur, together: old.together };
+  const before = old.op === 'path' ? old.points : [{ x: old.x, y: old.y }];
+  const after = c.op === 'path' ? c.points : [{ x: c.x, y: c.y }];
+  return { op: 'path', target: old.target, points: [...before, ...after], dur: old.dur, together: old.together };
+}
+
+/**
+ * Records changes at `point`. join = add them to the keyframe that ends there (if there is one, and it
+ * isn't a pause); otherwise they begin a new keyframe. Changes in one call always share a keyframe;
+ * a change to something that keyframe already changes updates that step instead (see merge).
+ * Returns { steps, point, added } (point = after the recorded steps).
+ */
+export function recordSteps(steps, point, changes, { join = true, dur = 500 } = {}) {
+  steps = steps.slice();
+  let start = join && point > 0 && !RUNS_TIME.has(steps[point - 1].op)
+    ? keyframes(steps).find((f) => f.end === point)?.start ?? null : null;
+  if (start !== null) { // joining: new changes take the keyframe's duration
+    const timed = steps.slice(start, point).filter((s) => !INSTANT.has(s.op));
+    if (timed.length) dur = Math.max(...timed.map((s) => s.dur ?? 0));
+  }
+  const added = [];
+  for (const c of changes) {
+    if (RUNS_TIME.has(c.op)) {
+      const step = { dur, ...c, together: false };
+      steps.splice(point++, 0, step);
+      added.push(step);
+      start = null;
+      continue;
+    }
+    if (start !== null) {
+      const j = steps.slice(start, point).findIndex((s) => sameThing(s, c));
+      if (j >= 0) { steps[start + j] = merge(steps[start + j], c); added.push(steps[start + j]); continue; }
+    }
+    const step = { dur, ...c, together: start !== null };
+    steps.splice(point, 0, step);
+    added.push(step);
+    if (start === null) start = point;
+    point++;
+  }
+  return { steps, point, added };
+}

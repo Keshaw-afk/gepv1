@@ -225,6 +225,12 @@ picture after `steps.slice(0, k)` (built and run like any program); Record splic
 Arrange adjusts instead of recording: `sourceOf(steps, k, id, prop)` (core/steps.js) finds the step that
 decides pos/size/colour there (or -1 = the stage) and that step or the stage changes (`reshapePath` bends a
 curved move to a new end; an object a step added gets an instant colour step right after it).
+**Keyframes:** steps whose `together` flag is set play with the one before; a run of them is a keyframe
+(`keyframes()` in core/steps.js, a pause is one on its own). The point always sits at a keyframe's end
+(`keyframeEndAt`). Record goes through `recordSteps(steps, point, changes, {join})`: changes join the
+keyframe ending at the point (taking its duration) unless "Next keyframe" asked for a new one; a second
+change to the same object's position merges into one `path` step, a colour or size replaces. Removing or
+pruning steps keeps every other step in its keyframe (`keepKeyframes`, `removeStep`).
 **Curved moves:** in Record a drag that strays 8 px or more from a straight line keeps its shape
 (simplified with `simplify()` in `core/paths.js`) and becomes `path(id, {{x, y}, …}, dur)`. Lua smooths the
 points (centripetal Catmull-Rom, `smoothPath`) and stores the curve in the command; the player and `pos()`

@@ -10,6 +10,8 @@ Usability work is judged by how well it serves those three.
 - [x] Free-hand lasso; align without overlaps; colours on the Stage; SVG buttons open a tab.
 - [x] Stage and Behaviour merged into one Build tab: Start row + steps, insert steps at any point.
 - [x] Arrange / Record modes; curved moves (`path()`), recorded from a bent drag.
+- [x] Keyframes in Record: changes play together until Next keyframe.
+- [ ] Result moments still say "Step n"; could say the keyframe.
 - [ ] Maybe: drag steps to reorder; a Save/Open project file (stage + steps + code in one).
 - [x] Lasso, Ctrl-click, select all, group move, delete/remove, duplicate, copy/paste, align/spread, nudge, grid.
 - [x] Undo/redo and autosave; New project.
