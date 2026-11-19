@@ -39,14 +39,14 @@ test('objects added in a keyframe appear there, with their colour; free spots; d
   const p = newProject();
   go(p, [['add', { shape: 'circle', label: 'A' }], ['next_keyframe']]);
   const r = runTool(p, 'add', { shape: 'triangle', label: 'a', color: 'green' });
-  assert.match(r, /"a" was taken, so it is called a2/);
+  assert.match(r, /"a" was taken, so it is called a′/);
   const a = endState(p);
   const [first, second] = [...a.values()];
   assert.ok(Math.hypot(first.x - second.x, first.y - second.y) >= 70, 'the free spot is away from A');
   assert.deepEqual(p.steps.map((s) => s.op), ['add', 'color']);
   assert.equal(p.steps[1].dur, 0, 'it appears in its colour');
-  runTool(p, 'connect', { from: 'A', to: 'a2', arrow: true });
-  runTool(p, 'remove', { label: 'a2-A' });
+  runTool(p, 'connect', { from: 'A', to: "a'", arrow: true });
+  runTool(p, 'remove', { label: 'a′-A' });
   assert.doesNotThrow(() => lua(p));
 });
 

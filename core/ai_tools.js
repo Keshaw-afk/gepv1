@@ -58,10 +58,11 @@ export function endState(project) {
 
 const nameOf = (objs, o) => (o.kind === 'node' ? o.label : `${objs.get(o.a)?.label}-${objs.get(o.b)?.label}`);
 
-function find(project, label, { kind } = {}) {
+/** The object called `label` at the end (case-insensitive; ' for ′; a line is "A-B"). Throws helpful errors. */
+export function find(project, label, { kind } = {}) {
   const objs = endState(project);
   if (label === undefined || label === null || String(label).trim() === '') throw new ToolError('Say which object: give its label, e.g. "A".');
-  const want = String(label).trim().toLowerCase().replace(/[–—]/g, '-');
+  const want = String(label).trim().toLowerCase().replace(/[–—]/g, '-').replace(/''/g, '″').replace(/'/g, '′');
   const all = [...objs.values()].filter((o) => !kind || o.kind === kind);
   const hit = all.find((o) => nameOf(objs, o) === String(label).trim()) ?? all.find((o) => nameOf(objs, o).toLowerCase() === want)
     // a line can also be named the other way round: "B-A"
@@ -137,9 +138,11 @@ function freeSpot(objs) {
 function uniqueLabel(objs, label) {
   const taken = new Set([...objs.values()].filter((o) => o.kind === 'node').map((o) => o.label.toLowerCase()));
   if (!taken.has(label.toLowerCase())) return label;
-  let k = 2;
-  while (taken.has(`${label}${k}`.toLowerCase())) k++;
-  return `${label}${k}`;
+  // a prime, not a number: a second "3" in an array must not read as "32"
+  for (const mark of ['′', '″', '‴']) if (!taken.has(`${label}${mark}`.toLowerCase())) return `${label}${mark}`;
+  let k = 4;
+  while (taken.has(`${label}(${k})`.toLowerCase())) k++;
+  return `${label}(${k})`;
 }
 
 // ---------- recording ----------
