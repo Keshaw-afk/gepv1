@@ -10,6 +10,8 @@ import fengari from 'fengari';
 import { runProgram, ScriptError } from '../core/lua_api.js';
 import { outputSettings, forVideo } from '../core/output.js';
 import { writeFrames, encodeVideo } from './export.js';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8080;
@@ -69,9 +71,91 @@ async function handleExport(req, res) {
   }
 }
 
+// ---------- Live link: AI tools run in the open app tab ----------
+// The tab owns the project (undo, autosave, what you see). A tool call (from node/mcp.js) is sent to
+// the tab over server-sent events; the tab runs it with core/ai_tools.js and posts the reply back.
+const tabs = new Set(); // open /api/live connections, newest last
+const waiting = new Map(); // tool call id -> resolve
+const TOOL_TIMEOUT_MS = 30_000;
+const OPEN_WAIT_MS = 10_000;
+
+function handleLive(req, res) {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  res.write(': connected\n\n');
+  tabs.add(res);
+  const ping = setInterval(() => res.write(': ping\n\n'), 20_000);
+  req.on('close', () => { clearInterval(ping); tabs.delete(res); });
+}
+
+const newestTab = () => [...tabs].at(-1);
+
+/** Waits for an app tab; if none is open, opens the app in the default browser first. */
+async function aTab() {
+  if (tabs.size) return newestTab();
+  if (!process.env.GEPV1_NO_OPEN) spawn('xdg-open', [`http://localhost:${PORT}/`], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+  const until = Date.now() + OPEN_WAIT_MS;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (tabs.size) return newestTab();
+  }
+  throw Object.assign(new Error(`GEPV1 is not open. Open http://localhost:${PORT}/ in a browser, then try again.`), { status: 503 });
+}
+
+/** PNG of an SVG, via ffmpeg's librsvg decoder (as the MP4 frames; it reads SVG from a file only). */
+async function svgToPng(svg) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'gepv1-png-'));
+  try {
+    await fs.writeFile(path.join(dir, 'f.svg'), svg);
+    await new Promise((resolve, reject) => {
+      const p = spawn('ffmpeg', ['-v', 'error', '-i', 'f.svg', '-frames:v', '1', 'f.png'], { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] });
+      let err = '';
+      p.stderr.on('data', (d) => { err += d; });
+      p.on('error', reject);
+      p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg: ${err.trim()}`))));
+    });
+    return await fs.readFile(path.join(dir, 'f.png'));
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function handleTool(req, res) {
+  try {
+    const { name, args = {} } = JSON.parse(await readBody(req));
+    const tab = await aTab();
+    const id = randomUUID();
+    const reply = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { waiting.delete(id); reject(Object.assign(new Error('The app did not answer in time.'), { status: 504 })); }, TOOL_TIMEOUT_MS);
+      waiting.set(id, (r) => { clearTimeout(timer); resolve(r); });
+      tab.write(`event: tool\ndata: ${JSON.stringify({ id, name, args })}\n\n`);
+    });
+    if (reply.svg) {
+      try { reply.png = (await svgToPng(reply.svg)).toString('base64'); } catch { /* no picture, the text still helps */ }
+      delete reply.svg;
+    }
+    sendJson(res, 200, reply);
+  } catch (e) {
+    sendJson(res, e.status ?? 400, { error: e.message });
+  }
+}
+
+async function handleToolResult(req, res) {
+  try {
+    const r = JSON.parse(await readBody(req));
+    const done = waiting.get(r.id);
+    if (done) { waiting.delete(r.id); done({ text: r.text, error: r.error, svg: r.svg }); }
+    sendJson(res, 200, { ok: !!done });
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'POST' && url.pathname === '/api/export') return handleExport(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/tool') return handleTool(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/tool-result') return handleToolResult(req, res);
+  if (req.method === 'GET' && url.pathname === '/api/live') return handleLive(req, res);
   if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
   const file = resolveStatic(url.pathname);
   try {
@@ -86,3 +170,4 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => console.log(`GEPV1 running at http://localhost:${PORT}/`));
+export { server };

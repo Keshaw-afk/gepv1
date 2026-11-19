@@ -258,3 +258,6 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 .steps li.change .what { padding-left: 10px; border-left: 2px solid var(--border); }
 .steps li.change.in-current .what { border-left-color: var(--accent); }
 .steps li.pause .num { color: var(--muted); }
+
+/* the AI is editing: a quiet line under the status, in the accent colour */
+.ai-note { margin: -4px 0 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent); }

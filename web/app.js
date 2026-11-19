@@ -15,6 +15,8 @@ import { formatTrace } from '../core/trace.js';
 import { outputSettings } from '../core/output.js';
 import { frameAt, landmarks, renderFrame, frameName } from '../core/frames.js';
 import { Editor } from './editor.js';
+import { runTool } from '../core/ai_tools.js';
+import '../core/plugins/index.js'; // registers the plugin tools
 import { History } from './history.js';
 import { CodeView } from './codeview.js';
 
@@ -162,7 +164,8 @@ function syncInspector() {
   }
   for (const b of $('palette').children) b.disabled = !sel.length;
   $('dur').disabled = $('pause').disabled = $('next-key').disabled = !recording();
-  const where = point === 0 ? 'the start' : `step ${point}`;
+  const frames = keyframes(steps.slice(0, point)), last = frames.at(-1);
+  const where = point === 0 ? 'the start' : steps[last.start].op === 'wait' ? 'a pause' : `keyframe ${frames.filter((f) => steps[f.start].op !== 'wait').length}`;
   $('target').innerHTML = recording()
     ? newKeyframe || point === 0 || steps[point - 1]?.op === 'wait'
       ? `<b>Recording</b> a new keyframe after ${where}. Everything you change now plays together.`
@@ -334,6 +337,7 @@ $('clear').addEventListener('click', () => loadStage(''));
 $('new').addEventListener('click', () => {
   steps = [];
   point = 0;
+  aiCursor = 'start';
   scriptBox.value = '';
   loadStage('');
   stepsChanged();
@@ -1013,3 +1017,58 @@ history = new History({
 });
 updateHistoryButtons();
 window.addEventListener('pagehide', () => history.commit());
+
+// ---------- AI: tools sent by the server (node/mcp.js) run here, on the live project ----------
+// The AI works at the end of the steps, like Record mode: before its first next_keyframe it builds the
+// starting picture, after it its changes join the current keyframe. Each call is one undo step.
+let aiCursor = steps.length ? 'in' : 'start';
+let aiSeconds = 1;
+let aiNoteTimer = null;
+
+/** Runs one AI tool here. Returns { text } or { error }, plus { svg } (the end picture) for show. */
+export function runAiTool(name, args) {
+  if (tab !== 'build') showTab('build');
+  if (!steps.length && aiCursor === 'in') aiCursor = 'start'; // the steps were cleared by hand
+  const project = { scene: editor.scene, steps, cursor: aiCursor, seconds: aiSeconds };
+  try {
+    const text = runTool(project, name, args);
+    aiCursor = project.cursor;
+    aiSeconds = project.seconds;
+    steps = project.steps;
+    point = steps.length; // show where the AI is
+    if (project.scene !== editor.scene) editor.setScene(project.scene); // start_over
+    everythingChanged();
+    noteAi(name, args);
+    if (name !== 'show') return { text };
+    return { text, svg: endPicture() };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+/** The last frame of the starting picture + steps, as an SVG (for the AI to look at). */
+function endPicture() {
+  try {
+    const { timeline } = runProgram(fengari, { stage: toStageLua(editor.scene), steps: stepsToLua(steps, editor.scene) });
+    return renderFrame(timeline, [timeline.durationMs], 0, outputSettings());
+  } catch {
+    return undefined;
+  }
+}
+
+function noteAi(name, args) {
+  const note = $('ai-note');
+  note.hidden = false;
+  note.textContent = `✦ AI is editing: ${name}${args?.label ? ` ${args.label}` : ''}`;
+  clearTimeout(aiNoteTimer);
+  aiNoteTimer = setTimeout(() => { note.hidden = true; }, 4000);
+}
+
+if (typeof EventSource === 'function') {
+  const live = new EventSource('/api/live');
+  live.addEventListener('tool', (e) => {
+    const { id, name, args } = JSON.parse(e.data);
+    const reply = runAiTool(name, args);
+    fetch('/api/tool-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...reply }) });
+  });
+}
