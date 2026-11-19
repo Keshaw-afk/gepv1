@@ -4,6 +4,7 @@
 // A step is one of
 //   { op: 'color',   target, color, dur, together }
 //   { op: 'move',    target, x, y, dur, together }
+//   { op: 'path',    target, points: [{x, y}, …], dur, together }  a curved move through the points
 //   { op: 'size',    target, size, dur, together }         size = { w, h } (or one number for both); 1 = normal
 //   { op: 'add',     id, shape, label, x, y, size?, together }  a new object appears
 //   { op: 'connect', id, a, b, directed, together }        a new line or arrow appears
@@ -65,7 +66,7 @@ function walk(steps, scene) {
         }
         alive.delete(s.target);
       }
-    } else if (s.op === 'move' || s.op === 'size') {
+    } else if (s.op === 'move' || s.op === 'path' || s.op === 'size') {
       ok = isNode(s.target);
     } else if (s.op === 'color') {
       ok = alive.has(s.target);
@@ -129,6 +130,7 @@ export function buildSteps(steps, scene) {
     switch (s.op) {
       case 'color': return `color(${ref(s.target)}, ${luaString(s.color)}, ${sec(s.dur)})`;
       case 'move': return `move(${ref(s.target)}, ${Math.round(s.x)}, ${Math.round(s.y)}, ${sec(s.dur)})`;
+      case 'path': return `path(${ref(s.target)}, {${s.points.map((p) => `{${Math.round(p.x)}, ${Math.round(p.y)}}`).join(', ')}}, ${sec(s.dur)})`;
       case 'size': { const z = sizeOf(s.size); return `size(${ref(s.target)}, ${num(z.w)}, ${num(z.h)}, ${sec(s.dur)})`; }
       case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${Math.round(s.x)}, ${Math.round(s.y)}${sizeArgs(s.size ?? 1)})`;
       case 'connect': return `${s.directed ? 'arrow' : 'edge'}(${names.get(s.a)}, ${names.get(s.b)})`;
@@ -188,4 +190,30 @@ export function toEditorIds(state, result, scene, steps, stepAtLine) {
     nodes: state.nodes.map((n) => ({ ...n, id: id(n.id) })),
     edges: state.edges.map((e) => ({ ...e, id: id(e.id), a: id(e.a), b: id(e.b) })),
   };
+}
+
+/**
+ * Which step decides an object's position, size or colour at point k (after the first k steps)?
+ * Returns the index of the last step before k that sets it (a move, path, size or colour step, or
+ * the add step that created the object), or -1 when it is still as on the stage. Arrange mode
+ * changes that step (or the stage) instead of recording a new one.
+ *   prop  'pos' | 'size' | 'color'
+ */
+export function sourceOf(steps, k, id, prop) {
+  const sets = { pos: ['move', 'path'], size: ['size'], color: ['color'] }[prop];
+  for (let j = Math.min(k, steps.length) - 1; j >= 0; j--) {
+    const s = steps[j];
+    if (sets.includes(s.op) && s.target === id) return j;
+    if ((s.op === 'add' || s.op === 'connect') && s.id === id) return j;
+  }
+  return -1;
+}
+
+/**
+ * Moves the end of a curved move to (x, y), bending the whole curve smoothly: each point shifts by
+ * its share of the way along (the start stays where it is).
+ */
+export function reshapePath(points, x, y) {
+  const last = points.at(-1), dx = x - last.x, dy = y - last.y;
+  return points.map((p, i) => ({ x: Math.round(p.x + (dx * (i + 1)) / points.length), y: Math.round(p.y + (dy * (i + 1)) / points.length) }));
 }

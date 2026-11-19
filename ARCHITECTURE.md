@@ -176,6 +176,7 @@ test/      node:test suites
 | `core/shapes.js` | Shape geometry: outline at the origin, size, hit test, label position |
 | `core/easing.js` | `linear` and `smooth` easing, and the matching SMIL `keySplines` |
 | `core/arrange.js` | align and spread selected nodes (real shape edges) |
+| `core/paths.js` | curved moves: smooth a path, the point a fraction along it, simplify a drag, how much it bends |
 | `core/timeline.js` | Command list + script clock (integer ms) |
 | `core/player.js` | `sceneAt(timeline, t)`: apply and interpolate commands (create, set, remove); frame times |
 | `core/frames.js` | Frame lookup, moments (landmarks), one frame as an exported SVG |
@@ -203,7 +204,7 @@ test/      node:test suites
 |--------|-------|----------------------------|
 | Tool row: select `V`, circle `C`, rectangle `R`, triangle `T`, text `X`, line `L`, arrow `A` | | |
 | Shape tool, click empty canvas | Add that shape (auto label `A`, `B`, …; text asks for its words) | The object appears |
-| Drag an object | Move it | Record a move |
+| Drag an object | Move it | Record a move (a bent drag: a curved move) |
 | Line or arrow tool (or Shift-drag) from one object to another | Connect them | They get connected |
 | Draw a loop on empty space (any tool) | Lasso: select several (a straight drag = the box between its ends) | same |
 | Ctrl/Cmd-click, Ctrl+A | Add to / toggle the selection; select all | same |
@@ -218,9 +219,16 @@ test/      node:test suites
 | `Ctrl+S` / `Ctrl+O` | Save or load `stage.lua` | |
 
 **One Build tab, a point in the steps.** The steps list starts with a **Start** row; the page keeps
-`point` (null = Start, k = after the first k steps). At Start the editor is in `'stage'` mode and edits
-`core/Scene`; at k it is in `'behaviour'` mode, shows the picture after `steps.slice(0, k)` (built and run
-like any program) and new steps are spliced in at k. `prune()` keeps the point on the same step and
+`point` (0 = Start, k = after the first k steps) and a mode, **Arrange** or **Record**. Arrange at 0: the
+editor is in `'stage'` mode and edits `core/Scene`. Otherwise it is in `'behaviour'` mode and shows the
+picture after `steps.slice(0, k)` (built and run like any program); Record splices new steps in at k,
+Arrange adjusts instead of recording: `sourceOf(steps, k, id, prop)` (core/steps.js) finds the step that
+decides pos/size/colour there (or -1 = the stage) and that step or the stage changes (`reshapePath` bends a
+curved move to a new end; an object a step added gets an instant colour step right after it).
+**Curved moves:** in Record a drag that strays 8 px or more from a straight line keeps its shape
+(simplified with `simplify()` in `core/paths.js`) and becomes `path(id, {{x, y}, …}, dur)`. Lua smooths the
+points (centripetal Catmull-Rom, `smoothPath`) and stores the curve in the command; the player and `pos()`
+follow it at even speed (`pointAlong`), the animated SVG uses its corners as `values`/`keyTimes`. `prune()` keeps the point on the same step and
 tells the user when steps that used a removed object were dropped. What happens over time comes from
 the steps (sequences without code) and/or `script.lua` (loops, algorithms).
 
@@ -231,7 +239,7 @@ An arrow's points depend on both ends, so they are sampled every 10 ms while eit
 Objects created later start hidden; removed ones are hidden from then on. When animations overlap,
 the later one wins, as in the player. It uses the same ids, classes and `<style>` as a still frame.
 It was checked in
-Chrome against the player every 23 ms for the DFS, network, edge-case, size and stretch scripts (18,933 checks: position, colour and visibility of every object,
+Chrome against the player every 23 ms for the DFS, network, edge-case, size, curve and stretch scripts (20,337 checks: position, colour and visibility of every object,
 arrow points). It matched everywhere except exactly on a command's start instant, where Chrome's
 clock is half a millisecond off. It plays once.
 
@@ -257,6 +265,7 @@ edge(a, b)              -- create a line between two objects; returns id
 arrow(a, b)             -- a line with an arrowhead in the middle, pointing from a to b
 color(id, c, dur?)      -- animate colour to c ("red", "#ff0000", ...)
 move(id, x, y, dur?, ease?)  -- animate position to (x, y); ease "linear" (default) or "smooth"
+path(id, {{x, y}, …}, dur?, ease?) -- a curved move from where it is through the points, smooth, at even speed
 remove(id)              -- the object disappears (a node takes its lines with it)
 wait(t)                 -- advance the script clock by t seconds
 pos(id)                 -- x, y of a node right now (also halfway through a move)

@@ -4,7 +4,7 @@
 
 import { runProgram } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
-import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, INSTANT, RUNS_TIME } from '../core/steps.js';
+import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, sourceOf, reshapePath, INSTANT, RUNS_TIME } from '../core/steps.js';
 import { Scene, DEFAULT_EDGE_COLOR } from '../core/scene.js';
 import { sizeOf, defaultColor } from '../core/shapes.js';
 import { ARRANGE_KINDS } from '../core/arrange.js';
@@ -23,6 +23,8 @@ const $ = (id) => document.getElementById(id);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
+  arrange: 'Arrange: nothing is recorded · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
+  record: 'Record: every change becomes a step · Drag in a curve for a curved move · Pick a colour · Handles: resize · Shapes add objects · Ctrl+Z: undo',
   start: 'The starting picture · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   steps: 'Every change here becomes a step · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects · Ctrl+Z: undo',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
@@ -30,10 +32,14 @@ const HINTS = {
 
 let tab = 'build';
 let steps = [];
-// Where you are working: null = the start (edits change the starting picture), or k = after the first
-// k steps (the canvas shows the picture at that point and new steps are inserted there).
-let point = null;
-const atStart = () => point === null;
+// Where you are working: after the first `point` steps (0 = the start). The canvas shows the picture
+// there. In Record mode every change becomes a step inserted at that point; in Arrange mode nothing is
+// recorded: a change adjusts whatever already decides it there (the starting picture, or the step that
+// moved, sized, coloured or added the object).
+let point = 0;
+let mode = 'arrange';
+const recording = () => mode === 'record';
+const stageEditing = () => mode === 'arrange' && point === 0; // the editor edits the Scene directly
 
 function showError(msg) {
   $('error').hidden = !msg;
@@ -77,15 +83,30 @@ const editor = new Editor($('editor'), {
   onSelect: () => syncInspector(),
   // after the click has finished (the browser moves focus on mousedown)
   onRename: () => setTimeout(() => { labelInput.focus(); labelInput.select(); }),
-  onRecordMoves: (moves) => addSteps(moves.map((m) => ({ op: 'move', target: m.id, x: m.x, y: m.y }))),
-  onResize: (list) => addSteps(list.map(({ id, size }) => ({ op: 'size', target: id, size }))),
+  onRecordMoves: (moves) => {
+    if (!recording()) { adjustMoves(moves); return; }
+    addSteps(moves.map((m) => (m.points
+      ? { op: 'path', target: m.id, points: m.points }
+      : { op: 'move', target: m.id, x: m.x, y: m.y })));
+  },
+  onResize: (list) => {
+    if (!recording()) { adjustSizes(list); return; }
+    addSteps(list.map(({ id, size }) => ({ op: 'size', target: id, size })));
+  },
   onAddObject: (shape, label, x, y) => {
+    if (!recording()) { // Arrange: it is part of the starting picture
+      const id = editor.scene.addNode(label, x, y, shape);
+      everythingChanged();
+      editor.popIn(id);
+      return;
+    }
     const id = nextStepId(steps);
     addSteps([{ op: 'add', id, shape, label, x, y }]);
     editor.popIn(id);
   },
-  onPaste: pasteSteps,
+  onPaste: (plan) => (recording() ? pasteSteps(plan) : pasteOnStage(plan)),
   onConnect: (a, b, directed) => {
+    if (!recording()) { connectUnrecorded(a, b, directed); return; }
     const id = nextStepId(steps);
     addSteps([{ op: 'connect', id, a, b, directed }]);
     editor.popIn(id);
@@ -118,7 +139,7 @@ function syncInspector() {
 
   const single = one?.kind === 'node';
   // a label can change at the start, or later for an object a step added
-  const renamable = single && (atStart() || typeof one.id === 'string');
+  const renamable = single;
   labelInput.disabled = !renamable;
   if (document.activeElement !== labelInput) labelInput.value = single ? one.label : '';
 
@@ -134,15 +155,17 @@ function syncInspector() {
   for (const b of $$('.dup')) b.disabled = !nodes.length;
   for (const b of $$('.del')) {
     b.disabled = !sel.length;
-    b.textContent = atStart() ? 'Delete' : 'Remove';
-    b.title = atStart() ? 'Delete the selection (Delete)' : 'The selection disappears at this step (Delete)';
+    b.textContent = recording() ? 'Remove' : 'Delete';
+    b.title = recording() ? 'The selection disappears at this step (Delete)' : 'Delete the selection for good (Delete)';
   }
   for (const b of $('palette').children) b.disabled = !sel.length;
-  $('dur').disabled = $('pause').disabled = atStart();
-  $('target').innerHTML = atStart()
-    ? '<b>Start</b>: you are drawing the starting picture. Pick a step below to add changes over time.'
-    : point === 0 ? '<b>New steps go first</b>. Every change you make now becomes a step.'
-      : `<b>New steps go after step ${point}</b>. Every change you make now becomes a step.`;
+  $('dur').disabled = $('pause').disabled = !recording();
+  const where = point === 0 ? 'the start' : `step ${point}`;
+  $('target').innerHTML = recording()
+    ? `<b>Recording</b> after ${where}: every change becomes a step there. Drag in a curve for a curved move.`
+    : point === 0
+      ? '<b>Arranging</b> the starting picture: place, drag, resize and colour freely. Nothing is recorded.'
+      : `<b>Arranging</b> at ${where}: nothing is recorded; a change adjusts the step (or the starting picture) that put things there.`;
 }
 
 // Arrange buttons: align to an edge or centre, spread evenly.
@@ -182,8 +205,9 @@ for (const dim of ['w', 'h']) {
 for (const b of $$('.dup')) b.addEventListener('click', () => editor.duplicate());
 for (const b of $$('.del')) b.addEventListener('click', deleteSelection);
 function deleteSelection() {
-  if (atStart()) { editor.deleteSelected(); return; }
-  // later: the objects disappear at this step. A node takes its lines along, so only lines
+  if (stageEditing()) { editor.deleteSelected(); return; }
+  if (!recording()) { deleteUnrecorded(); return; }
+  // Record: the objects disappear at this step. A node takes its lines along, so only lines
   // whose nodes stay need a step of their own.
   const sel = editor.selection();
   const nodes = new Set(sel.filter((o) => o.kind === 'node').map((o) => o.id));
@@ -191,13 +215,98 @@ function deleteSelection() {
   addSteps([...nodes, ...lines.map((e) => e.id)].map((id) => ({ op: 'remove', target: id })));
   editor.setSelection([]);
 }
+// A label isn't animated: renaming always changes the object itself (on the stage, or its add step).
 labelInput.addEventListener('input', () => {
-  if (atStart()) { editor.setLabel(labelInput.value); return; }
-  const add = steps.find((s) => s.op === 'add' && s.id === editor.selected);
-  if (!add) return;
-  add.label = labelInput.value;
-  stepsChanged({ keepSelection: true });
+  if (stageEditing()) { editor.setLabel(labelInput.value); return; }
+  const id = editor.selected;
+  const add = steps.find((s) => s.op === 'add' && s.id === id);
+  if (add) add.label = labelInput.value;
+  else if (editor.scene.get(id)) editor.scene.get(id).label = labelInput.value;
+  else return;
+  everythingChanged({ keepSelection: true });
 });
+
+// ---------- Arrange at a later point: adjust instead of record ----------
+/** The stage and the steps both changed (Arrange mode away from the start). */
+function everythingChanged(opts) {
+  stageView.set(toStageLua(editor.scene));
+  stepsChanged(opts);
+}
+
+/** Inserts a step right after step j (for things Arrange has to add, e.g. a colour for a new object). */
+function insertAfter(j, step) {
+  steps.splice(j + 1, 0, { dur: 0, together: true, ...step });
+  if (j + 1 < point || (j + 1 === point && j >= 0)) point++;
+}
+
+function adjustMoves(moves) {
+  for (const m of moves) {
+    const j = sourceOf(steps, point, m.id, 'pos');
+    if (j < 0) Object.assign(editor.scene.get(m.id) ?? {}, { x: m.x, y: m.y });
+    else if (steps[j].op === 'path') steps[j].points = reshapePath(steps[j].points, m.x, m.y);
+    else Object.assign(steps[j], { x: m.x, y: m.y });
+  }
+  everythingChanged();
+}
+
+function adjustSizes(list) {
+  for (const { id, size } of list) {
+    const j = sourceOf(steps, point, id, 'size');
+    if (j < 0) { if (editor.scene.get(id)) editor.scene.get(id).size = size; } else steps[j].size = size;
+  }
+  everythingChanged();
+}
+
+function adjustColors(ids, color) {
+  for (const id of ids) {
+    const j = sourceOf(steps, point, id, 'color');
+    if (j < 0) { if (editor.scene.get(id)) editor.scene.get(id).color = color; } else if (steps[j].op === 'color') steps[j].color = color;
+    else insertAfter(j, { op: 'color', target: id, color }); // an object a step added: colour it as it appears
+  }
+  everythingChanged();
+}
+
+/** Arrange: a line between two stage objects is part of the stage; otherwise it appears with the later one. */
+function connectUnrecorded(a, b, directed) {
+  if (editor.scene.isNode(a) && editor.scene.isNode(b)) {
+    const id = editor.scene.addEdge(a, b, directed);
+    everythingChanged();
+    editor.popIn(id);
+    return;
+  }
+  const j = Math.max(...[a, b].map((id) => steps.findIndex((s) => s.op === 'add' && s.id === id)));
+  const id = nextStepId(steps);
+  insertAfter(j, { op: 'connect', id, a, b, directed });
+  everythingChanged();
+  editor.popIn(id);
+}
+
+/** Arrange: copies go into the starting picture. */
+function pasteOnStage(plan) {
+  const ids = plan.nodes.map((n) => {
+    const id = editor.scene.addNode(n.label, n.x, n.y, n.shape, n.size);
+    if (n.color) editor.scene.get(id).color = n.color;
+    return id;
+  });
+  const lines = plan.edges.map((e) => {
+    const id = editor.scene.addEdge(ids[e.a], ids[e.b], e.directed);
+    if (e.color) editor.scene.get(id).color = e.color;
+    return id;
+  });
+  everythingChanged();
+  return [...ids, ...lines];
+}
+
+/** Arrange: deleting takes the object away for good (from the stage, or the step that added it). */
+function deleteUnrecorded() {
+  for (const id of editor.selectedIds()) {
+    if (editor.scene.get(id)) { editor.scene.remove(id); continue; }
+    const j = steps.findIndex((s) => (s.op === 'add' || s.op === 'connect') && s.id === id);
+    if (j >= 0) { steps.splice(j, 1); if (j < point) point--; }
+  }
+  editor.setSelection([]);
+  everythingChanged();
+}
 
 function loadStage(text) {
   try {
@@ -220,7 +329,7 @@ $('clear').addEventListener('click', () => loadStage(''));
 // Start again: an empty stage, no steps, no code (Undo brings it all back)
 $('new').addEventListener('click', () => {
   steps = [];
-  point = null;
+  point = 0;
   scriptBox.value = '';
   loadStage('');
   stepsChanged();
@@ -237,7 +346,8 @@ for (const c of PALETTE) {
   b.style.background = paint(c);
   b.disabled = true;
   b.addEventListener('click', () => {
-    if (atStart()) editor.setColor(c);
+    if (stageEditing()) editor.setColor(c);
+    else if (!recording()) adjustColors(editor.selectedIds(), c);
     else addSteps(editor.selectedIds().map((id) => ({ op: 'color', target: id, color: c })));
   });
   $('palette').append(b);
@@ -252,7 +362,6 @@ let justAdded = new Set(); // the steps that slide into the list
 /** Inserts steps at the current point; several (a selection of many objects) play together. */
 function addSteps(list) {
   if (!list.length) return;
-  if (atStart()) point = steps.length;
   const dur = stepDur();
   const added = list.map((s, i) => ({ dur, together: i > 0, ...s }));
   steps.splice(point, 0, ...added);
@@ -266,7 +375,6 @@ $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); }
 
 /** Paste in Behaviour: the copies appear (and their lines), all at once. Returns their ids. */
 function pasteSteps(plan) {
-  if (atStart()) point = steps.length;
   const dur = stepDur();
   const added = [];
   const push = (s) => { const step = { dur, together: added.length > 0, ...s }; steps.splice(point++, 0, step); added.push(step); };
@@ -294,9 +402,9 @@ function pasteSteps(plan) {
  * it). Keeps the current point on the same step and says when later steps were dropped.
  */
 function prune() {
-  const before = steps.length, upto = point === null ? null : new Set(steps.slice(0, point));
+  const before = steps.length, upto = new Set(steps.slice(0, point));
   steps = pruneSteps(steps, editor.scene);
-  if (upto) point = steps.filter((s) => upto.has(s)).length;
+  point = steps.filter((s) => upto.has(s)).length;
   const dropped = before - steps.length;
   $('dropped-note').hidden = !dropped;
   if (dropped) $('dropped-note').textContent = `${dropped} step${dropped === 1 ? '' : 's'} used an object that is no longer there, so ${dropped === 1 ? 'it was' : 'they were'} removed. Ctrl+Z brings ${dropped === 1 ? 'it' : 'them'} back.`;
@@ -312,18 +420,29 @@ function stepsChanged({ keepSelection = false } = {}) {
   syncInspector();
 }
 
-/** Work at a point: null = the start, k = after the first k steps. */
+/** Work at a point: after the first k steps (0 = the start). */
 function setPoint(k) {
-  point = k === null ? null : Math.max(0, Math.min(steps.length, k));
+  point = Math.max(0, Math.min(steps.length, k));
   renderSteps();
   showPoint();
 }
 
+/** Arrange (nothing is recorded) or Record (every change becomes a step). */
+function setMode(next) {
+  mode = next;
+  for (const b of $$('[data-mode]')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+  $('editor').classList.toggle('recording', recording());
+  renderSteps();
+  if (tab === 'build') showPoint();
+}
+for (const b of $$('[data-mode]')) b.addEventListener('click', () => setMode(b.dataset.mode));
+
 // The canvas at the current point: the starting picture, or the picture after the first k steps with
 // faint trails of their moves.
 function showPoint() {
-  $('canvas-hint').textContent = HINTS[atStart() ? 'start' : 'steps'];
-  if (atStart()) { showError(null); editor.setMode('stage'); syncInspector(); return; }
+  $('canvas-hint').textContent = HINTS[mode];
+  editor.recording = recording();
+  if (stageEditing()) { showError(null); editor.setMode('stage'); syncInspector(); return; }
   try {
     const upto = steps.slice(0, point);
     const built = buildSteps(upto, editor.scene);
@@ -332,7 +451,7 @@ function showPoint() {
     const view = toEditorIds(sceneAt(result.timeline, result.timeline.durationMs), result, editor.scene, upto, built.stepAtLine);
     const trails = tweens(result.timeline)
       .filter((tw) => tw.prop === 'pos' && (tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
-      .map((tw) => [tw.from, tw.to]);
+      .map((tw) => tw.path ?? [tw.from, tw.to]); // a curved move draws its curve
     editor.setMode('behaviour', view, trails);
   } catch (e) {
     showError(e.message);
@@ -356,6 +475,9 @@ function describeChange(name, c) {
     what.append('colour → ', sw, ` ${c.color}`);
   } else if (c.op === 'move') {
     what.append(`move → (${Math.round(c.x)}, ${Math.round(c.y)})`);
+  } else if (c.op === 'path') {
+    const end = c.points.at(-1);
+    what.append(`curved move → (${Math.round(end.x)}, ${Math.round(end.y)})`);
   } else if (c.op === 'size') {
     const z = sizeOf(c.size), f = (v) => Number(v.toFixed(2));
     what.append(z.w === z.h ? `size → ×${f(z.w)}` : `size → width ×${f(z.w)}, height ×${f(z.h)}`);
@@ -390,13 +512,13 @@ function renderSteps() {
     return li;
   };
 
-  const start = el('li', `start${atStart() ? ' current' : ''}`);
+  const start = el('li', `start${point === 0 ? ' current' : ''}`);
   const what = el('span', 'what');
   what.append(el('b', null, 'Start'), ' the starting picture');
   start.append(el('span', 'num', '●'), what);
-  pick(start, null);
+  pick(start, 0);
   list.append(start);
-  if (point === 0) list.append(marker());
+  if (recording() && point === 0) list.append(marker());
 
   steps.forEach((s, i) => {
     const li = el('li');
@@ -410,7 +532,7 @@ function renderSteps() {
     remove.title = 'Remove step';
     remove.addEventListener('click', () => {
       steps.splice(i, 1);
-      if (point !== null && i < point) point--;
+      if (i < point) point--;
       stepsChanged();
     });
     li.append(remove);
@@ -440,16 +562,10 @@ function renderSteps() {
     if (s.together && prev && !RUNS_TIME.has(prev.op)) li.classList.add('together');
     if (justAdded.has(s)) li.classList.add('new');
     list.append(li);
-    if (point === i + 1) list.append(marker());
+    if (recording() && point === i + 1) list.append(marker());
   });
-  if (atStart()) {
-    const add = el('li', 'add');
-    add.append(el('span', 'num', '+'), el('span', 'what', steps.length ? 'Add steps at the end' : 'Add steps: changes over time'));
-    pick(add, steps.length);
-    list.append(add);
-  }
-  // keep the marker in view by scrolling the list only (scrollIntoView would move the whole page)
-  const mark = list.querySelector('.marker, .start.current');
+  // keep the current point in view by scrolling the list only (scrollIntoView would move the whole page)
+  const mark = list.querySelector('.marker') ?? list.querySelector('.current');
   if (mark && (mark.offsetTop < list.scrollTop || mark.offsetTop + mark.offsetHeight > list.scrollTop + list.clientHeight)) {
     list.scrollTop = mark.offsetTop - list.clientHeight / 2;
   }
@@ -603,6 +719,7 @@ function changeOf(c) {
   if (c.op === 'create') return { op: 'create', kind: c.kind === 'edge' ? (c.props.directed ? 'arrow' : 'line') : null };
   if (c.op === 'remove') return { op: 'remove' };
   if (c.prop === 'size') return { op: 'size', size: c.value };
+  if (c.path) return { op: 'path', points: c.path };
   return c.prop === 'color' ? { op: 'color', color: c.value } : { op: 'move', x: c.value.x, y: c.value.y };
 }
 
@@ -746,10 +863,12 @@ window.addEventListener('keydown', (e) => {
     deleteSelection();
   } else if (e.key === 'Escape') {
     editor.select(null);
-  } else if (atStart() && editor.sel.size && e.key.startsWith('Arrow')) {
-    // nudge the selection; Shift = 10 px (in Behaviour a nudge would add a step per key press, so drag instead)
+  } else if (!recording() && editor.sel.size && e.key.startsWith('Arrow')) {
+    // Arrange: nudge the selection; Shift = 10 px (Record would add a step per key press, so drag instead)
     const d = e.shiftKey ? 10 : 1;
-    editor.nudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);
+    const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
+    if (stageEditing()) editor.nudge(dx, dy);
+    else adjustMoves(editor.selectedNodes().map((nd) => ({ id: nd.id, x: nd.x + dx, y: nd.y + dy })));
     e.preventDefault();
   } else if (key === 'g' && !e.shiftKey) {
     toggleSnap();
@@ -772,7 +891,7 @@ function restoreProject(text) {
   editor.setScene(Scene.from(p.scene)); // (this prunes the old steps; they are replaced next)
   steps = p.steps;
   scriptBox.value = p.script ?? '';
-  if (point !== null) point = Math.min(point, steps.length);
+  point = Math.min(point, steps.length);
   renderSteps();
   if (tab === 'build') showPoint();
   syncInspector();
@@ -837,7 +956,8 @@ function restoreSaved() {
 }
 if (!restoreSaved()) loadStage(await fetch('/examples/stage.lua').then((r) => r.text()));
 steps = pruneSteps(steps, editor.scene);
-point = steps.length ? steps.length : null; // carry on at the end, or draw the start of a new project
+point = steps.length; // carry on at the end (0, the start, for a new project)
+setMode('arrange');
 renderSteps();
 updateRunOrder();
 editor.setTool('circle');

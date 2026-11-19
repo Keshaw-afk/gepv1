@@ -18,13 +18,14 @@ npm start            # http://localhost:8080  (PORT=xxxx npm start to change)
 ```
 
 The page has two tabs: **Build → Result**.
-1. **Build** has one canvas and, in the panel, a list that starts with **Start** followed by your steps.
-   Click a row to work at that point (like keyframes):
-   - **Start:** you draw the starting picture with the tool row: circles, rectangles, triangles, text,
-     lines and arrows (pick a shape and click to add, drag to move, line or arrow tool to connect).
-     Colours, sizes and positions here are how it begins.
-   - **A step** (or **+ Add steps**): the canvas shows the picture at that point and every change you
-     make becomes a step inserted right there: pick a colour, drag to record a move, resize, add or
+1. **Build** has one canvas, two modes and, in the panel, a list that starts with **Start** followed by
+   your steps. Click a row to work at that point (like keyframes); the canvas shows the picture there.
+   - **✎ Arrange:** place, drag, resize, colour and connect freely; **nothing is recorded**. At Start this
+     is the starting picture. At a later step a change adjusts whatever already decides it there: the
+     move or size step that put the object there (a curved move bends to its new end), the step that
+     added it, or the starting picture. New objects go into the starting picture.
+   - **● Record:** every change becomes a step inserted at that point: pick a colour, drag to move
+     (**drag in a curve for a curved move**, smoothed, at even speed over the Duration), resize, add or
      connect objects, remove things, line up a selection, add pauses. A change to several selected
      objects is several steps that play together; each step plays after the previous one, or "with
      previous". If a new step removes something later steps used, those steps go and a note says so.
@@ -49,6 +50,7 @@ Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a cl
 block.
 
 In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
+`path(id, {{x, y}, …}, dur)` moves along a smooth curve through the points at even speed,
 `remove(id)` makes it disappear and `size(id, w, h, dur)` makes a node wider and/or taller about its
 centre (factors 0.25 to 5; `size(id, 2)` = both ×2; `rect("A", x, y, 3, 1)` starts stretched). Sizes show in frames, the animated SVG and the MP4.
 

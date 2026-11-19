@@ -10,6 +10,8 @@
 //                    ever not normal size get them, and they never fight the move on the group
 //   move tween    -> <animateTransform type="translate"> on the object's group (eased moves use the
 //                    same curve as SMIL keySplines) and <animate> on the ends of every line touching it
+//   curved move   -> the same with values/keyTimes: the path's corners at their share of its length
+//                    (exact for an even-speed path), or sampled every 10 ms when eased
 //   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves,
 //                    and set at once when an end jumps
 //   create at t>0 -> hidden until t; remove -> hidden from t (<set attributeName="visibility">)
@@ -21,6 +23,7 @@ import { contrastText, mixColor } from './colors.js';
 import { DEFAULT_OUTPUT } from './output.js';
 import { smilEase, ease } from './easing.js';
 import { outline, outlineTag, labelDy, sizeOf, labelScale } from './shapes.js';
+import { pointAlong, vertexFractions } from './paths.js';
 import { paint, esc, n, n3, timelineIds, svgOpen, styleBlock, arrowDefs, backgroundRect, translate, arrowPoints, labelFill, ARROWHEAD_ID } from './svg.js';
 
 const SAMPLE_MS = 10;
@@ -117,6 +120,26 @@ export function renderAnimatedSVG(timeline, output = {}) {
       add('text', tw.id, animateLabelScale(tw));
     } else if (tw.prop === 'pos') {
       const { from: f, to } = tw;
+      if (tw.path && tw.dur > 0) {
+        // keys [fraction of the time, point]: corners by length when linear, else 10 ms samples
+        const keys = (tw.ease ?? 'linear') === 'linear'
+          ? vertexFractions(tw.path).map((k, j) => [k, tw.path[j]])
+          : [...new Set([...Array.from({ length: Math.ceil(tw.dur / SAMPLE_MS) }, (_, j) => (j * SAMPLE_MS) / tw.dur), 1])]
+            .map((k) => [k, pointAlong(tw.path, ease(tw.ease, k))]);
+        const kt = keys.map(([k]) => Number(k.toFixed(6))).join(';');
+        const timing = `keyTimes="${kt}" begin="${s(tw.t0)}" dur="${s(tw.dur)}" fill="freeze"`;
+        add('group', tw.id, `<animateTransform attributeName="transform" type="translate" values="${keys.map(([, p]) => `${n(p.x)} ${n(p.y)}`).join(';')}" ${timing}/>`);
+        for (const e of edges) {
+          if (e.props.directed) continue;
+          for (const end of ['a', 'b']) {
+            if (e.props[end] !== tw.id) continue;
+            const k = end === 'a' ? 1 : 2;
+            add('edge', e.id, `<animate attributeName="x${k}" values="${keys.map(([, p]) => n(p.x)).join(';')}" ${timing}/>`);
+            add('edge', e.id, `<animate attributeName="y${k}" values="${keys.map(([, p]) => n(p.y)).join(';')}" ${timing}/>`);
+          }
+        }
+        continue;
+      }
       add('group', tw.id, animateMove(f, to, tw.t0, tw.dur, tw.ease));
       for (const e of edges) {
         if (e.props.directed) continue; // arrows are sampled below

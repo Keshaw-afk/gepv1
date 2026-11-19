@@ -14,6 +14,10 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 > Steps), align/spread (`core/arrange.js`), duplicate, copy/paste, nudge, snap-to-grid, undo/redo and
 > autosave (`web/history.js`, localStorage `gepv1.project`), New project. A step on several objects is
 > several steps with `together`.
+> **After v2.0.0:** Build has two modes. **Arrange** records nothing: at Start it edits the stage, at a later
+> point it adjusts the step that decides the property there (`sourceOf`, `reshapePath` in core/steps.js) or the
+> stage. **Record** makes steps; a bent drag becomes `path(id, {{x, y}, …}, dur)` (core/paths.js, even speed).
+> `point` is now 0..n (0 = Start; no more null).
 > **Third pass:** Stage and Behaviour are one **Build** tab (tabs: Build → Result). The steps list starts
 > with **Start**; clicking a row sets `point` (null = Start, k = after k steps) and the canvas shows that point;
 > edits at a step are spliced in there (`addSteps`, `pasteSteps`), with a note when later steps get pruned.
@@ -134,9 +138,9 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 53 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
+| `npm test` | 58 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
-| `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 5 cases (dfs, network, edge, sizes, stretch) | open in Chrome: title says `18933 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
+| `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 6 cases (dfs, network, edge, sizes, curves, stretch) | open in Chrome: title says `20337 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
 
 - `check:animated --web` writes `web/_check.html` instead (served by `npm start`, handy for browser
   automation; it's git-ignored, delete it afterwards). The check must run after page load: SMIL

@@ -39,6 +39,11 @@ const CASES = {
     stage: 'A = node("A", 100, 100, 1.5) B = rect("B", 400, 200) C = triangle("C", 500, 80) T = text("Big", 300, 320, 2) arrow(A, B) edge(B, C)',
     script: 'size(A, 3, 3, 1, "smooth"); size(B, 0.5, 0.5, 0.8); wait(0.4); size(A, 1, 1, 0.6); move(B, 100, 300, 0.6, "smooth"); size(C, 2, 2, 0); wait(0.8); size(T, 0.5, 0.5, 0.5); X = rect("X", 50, 50, 3); size(X, 1, 1, 0.5); wait(0.6)',
   },
+  // curved moves: linear (exact corners), smooth (sampled), interrupted by a straight move, lines and arrows following
+  curves: {
+    stage: 'A = node("A", 100, 250) B = rect("B", 500, 100) C = node("C", 320, 300) edge(A, C) arrow(B, C)',
+    script: 'path(A, {{200, 80}, {400, 150}, {300, 250}}, 1.2); path(B, {{450, 300}, {150, 200}}, 1, "smooth"); wait(0.6); move(B, 600, 300, 0.4); wait(1)',
+  },
   // width and height apart: stretch, cross over (the label follows the smaller), instant, smooth, created stretched
   stretch: {
     stage: 'A = node("A", 120, 120, 2, 1) B = rect("B", 400, 120) C = triangle("C", 300, 260, 1, 2) T = text("Hi", 520, 300) edge(A, B) arrow(B, C)',

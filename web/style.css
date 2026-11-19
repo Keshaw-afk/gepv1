@@ -243,3 +243,10 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9rem; white-space: pre-wrap;
 }
 @media (max-width: 900px) { .error { margin: 4px 16px 0; } }
+
+/* Arrange / Record: two clear modes; Record wears the red second accent, and so does the canvas edge */
+.tools .modes { display: inline-flex; gap: 2px; }
+.tools .modes button { width: auto; padding: 0 10px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+.tools .modes [data-mode="arrange"][aria-pressed="true"] { background: var(--accent); color: #fff; }
+.tools .modes [data-mode="record"][aria-pressed="true"] { background: var(--accent-2); color: #fff; }
+.editor.recording { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2-soft); }

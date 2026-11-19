@@ -13,6 +13,9 @@ import { sceneToState } from '../core/player.js';
 import { renderSVG } from '../core/svg.js';
 import { halfSize, hits, SHAPES, SIZE, sizeOf, sameSize } from '../core/shapes.js';
 import { arrange } from '../core/arrange.js';
+import { simplify, bend } from '../core/paths.js';
+
+export const CURVE_BEND = 8; // a drag that strays this far from a straight line is a curved move
 
 export const TOOLS = ['select', ...SHAPES, 'line', 'arrow'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -72,7 +75,8 @@ export class Editor {
    * onChange()                   after any stage edit
    * onSelect(objs)               when the selection changes: [{id, kind, label, shape, size, …}]
    * onRename()                   double-click on a stage node
-   * onRecordMoves(moves)         behaviour: nodes were dragged or arranged: [{id, x, y}]
+   * onRecordMoves(moves)         behaviour: nodes were dragged or arranged: [{id, x, y, points?}]
+   *                              (points: the curve of a bent drag, after the start, ending at x, y)
    * onAddObject(shape, label, x, y)  behaviour: a shape tool clicked empty space
    * onConnect(a, b, directed)    behaviour: line/arrow dragged from node to node
    * onResize(list)               behaviour: sizes changed: [{id, size: {w, h}}]
@@ -90,6 +94,7 @@ export class Editor {
     this.sel = new Set(); // selected ids
     this.fresh = null; // id that just appeared (pops in)
     this.snap = false; // snap to the grid
+    this.recording = false; // Record mode: show the shape of a drag (it becomes a curved move)
     this.clipboard = null; // { nodes, edges, pastes }
     this.drag = null;
     Object.assign(this, callbacks);
@@ -146,6 +151,7 @@ export class Editor {
   render() {
     let state = this.state();
     const d = this.drag;
+    const extraTrails = d?.mode === 'record' && this.recording && d.trace.length > 1 ? [d.trace] : []; // the curve being drawn
     if (d?.mode === 'record') {
       state = { ...state, nodes: state.nodes.map((nd) => (d.pos.has(nd.id) ? { ...nd, ...d.pos.get(nd.id) } : nd)) };
     } else if (d?.mode === 'resize' && this.mode === 'behaviour') {
@@ -154,7 +160,7 @@ export class Editor {
     this.el.innerHTML = renderSVG(state, {
       interactive: true, selected: this.sel, handle: !d || d.mode === 'resize', ghost: d?.ghost, fresh: this.fresh,
       lasso: d?.mode === 'lasso' ? lassoRegion(d.path) : null, grid: this.snap,
-      trails: this.mode === 'behaviour' ? this.trails : null,
+      trails: this.mode === 'behaviour' ? [...this.trails, ...extraTrails] : null,
     });
   }
 
@@ -264,7 +270,7 @@ export class Editor {
         if (!this.sel.has(id)) this.select(id);
         const nodes = this.selectedNodes();
         const start = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
-        this.drag = { mode: this.mode === 'behaviour' ? 'record' : 'move', id, p0: p, start, pos: new Map(start), nodes };
+        this.drag = { mode: this.mode === 'behaviour' ? 'record' : 'move', id, p0: p, start, pos: new Map(start), nodes, trace: [start.get(id)] };
       }
     } else if (obj) {
       if (additive) this.toggle(id); else this.select(id); // a line
@@ -292,6 +298,8 @@ export class Editor {
       ({ dx, dy } = fitDelta(d.nodes.map((n) => ({ ...n, ...d.start.get(n.id) })), dx, dy));
       for (const [id, s] of d.start) d.pos.set(id, { x: Math.round(s.x + dx), y: Math.round(s.y + dy) });
       if (d.mode === 'record') {
+        const at = d.pos.get(d.id), last = d.trace.at(-1);
+        if (Math.hypot(at.x - last.x, at.y - last.y) >= 2) d.trace.push(at); // the shape of the drag
         this.render();
       } else {
         for (const [id, at] of d.pos) Object.assign(this.scene.get(id), at);
@@ -344,8 +352,15 @@ export class Editor {
     if (!d) return;
 
     if (d.mode === 'record') {
+      // a drag that bends is a curved move: every dragged object follows the same shape
+      const trace = [...d.trace, d.pos.get(d.id)];
+      const curve = bend(trace) >= CURVE_BEND ? simplify(trace, 3).slice(1) : null;
       const moves = [...d.pos].filter(([id, at]) => at.x !== d.start.get(id).x || at.y !== d.start.get(id).y)
-        .map(([id, at]) => ({ id, ...at }));
+        .map(([id, at]) => {
+          if (!curve) return { id, ...at };
+          const s = d.start.get(id), s0 = d.start.get(d.id);
+          return { id, ...at, points: curve.map((p) => ({ x: Math.round(p.x - s0.x + s.x), y: Math.round(p.y - s0.y + s.y) })) };
+        });
       if (Math.hypot(d.pos.get(d.id).x - d.start.get(d.id).x, d.pos.get(d.id).y - d.start.get(d.id).y) > 3 && moves.length) this.onRecordMoves?.(moves);
       else this.render();
     } else if (d.mode === 'move') {

@@ -10,6 +10,7 @@ import { Scene, DEFAULT_EDGE_COLOR } from './scene.js';
 import { Timeline, toMs } from './timeline.js';
 import { parseColor } from './colors.js';
 import { defaultColor, SIZE } from './shapes.js';
+import { smoothPath, pointAlong } from './paths.js';
 import { EASES, ease } from './easing.js';
 
 export const DEFAULT_DUR_MS = 500;
@@ -19,7 +20,7 @@ const MAX_COMMANDS = 50_000;
 
 // Every global the API defines (generated variable names must never shadow these).
 export const API_NAMES = ['node', 'rect', 'triangle', 'text', 'edge', 'arrow', 'color', 'move', 'remove',
-  'size', 'wait', 'pos', 'neighbors', 'edge_of'];
+  'size', 'path', 'wait', 'pos', 'neighbors', 'edge_of'];
 
 export class ScriptError extends Error {}
 
@@ -80,6 +81,7 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     const m = place.get(id);
     const f = m.dur === 0 ? 1 : Math.min(1, Math.max(0, (t - m.t0) / m.dur));
     const e = ease(m.ease, f);
+    if (m.path) return f >= 1 ? { ...m.to } : pointAlong(m.path, e);
     return { x: m.from.x + (m.to.x - m.from.x) * e, y: m.from.y + (m.to.y - m.from.y) * e };
   };
   const moveTo = (id, x, y, dur, easing) => {
@@ -141,6 +143,32 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       if (inStage && dur === 0 && birth?.t === timeline.clockMs && !coloured.has(id)) { birth.props.color = c; return 0; }
       coloured.add(id);
       emit({ op: 'set', id, prop: 'color', value: c, dur });
+      return 0;
+    },
+    // path(id, {{x, y}, …}, dur?, ease?): a curved move from where the node is now through the
+    // points, smoothed, at even speed. The curve is worked out once and stored in the command.
+    path(L) {
+      const id = checkObj(1, 'node');
+      lauxlib.luaL_checktype(L, 2, lua.LUA_TTABLE);
+      const n = lua.lua_rawlen(L, 2);
+      if (n < 1) fail('path needs at least one point, e.g. path(A, {{100, 50}, {200, 80}})');
+      if (n > 500) fail('path takes at most 500 points');
+      const pts = [];
+      for (let i = 1; i <= n; i++) {
+        lua.lua_rawgeti(L, 2, i);
+        if (!lua.lua_istable(L, -1)) fail(`path point ${i} must be {x, y}`);
+        lua.lua_rawgeti(L, -1, 1); lua.lua_rawgeti(L, -2, 2);
+        if (!lua.lua_isnumber(L, -2) || !lua.lua_isnumber(L, -1)) fail(`path point ${i} must be {x, y}`);
+        pts.push({ x: lua.lua_tonumber(L, -2), y: lua.lua_tonumber(L, -1) });
+        lua.lua_pop(L, 3);
+      }
+      const dur = optSeconds(3), easing = optEase(4, 'linear');
+      const from = positionAt(id, timeline.clockMs);
+      const curve = smoothPath([from, ...pts]);
+      const to = curve.at(-1);
+      place.set(id, { from, to, t0: timeline.clockMs, dur, ease: easing, path: curve });
+      Object.assign(scene.get(id), to);
+      emit({ op: 'set', id, prop: 'pos', value: to, dur, path: curve, ...(easing !== 'linear' && { ease: easing }) });
       return 0;
     },
     move(L) {
