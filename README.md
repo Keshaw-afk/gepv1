@@ -53,7 +53,7 @@ Exported SVG is meant to be reused: every object has an id (`A`, `A-B`) and a cl
 `edge arrow`, …), each shape is placed with one `translate()`, and shared styling is one `<style>`
 block.
 
-In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
+The full Lua API, with examples, is in [docs/LUA_API.md](docs/LUA_API.md). In code, `move(id, x, y, dur, "smooth")` eases in and out, `pos(id)` says where a node is now,
 `path(id, {{x, y}, …}, dur)` moves along a smooth curve through the points at even speed,
 `remove(id)` makes it disappear and `size(id, w, h, dur)` makes a node wider and/or taller about its
 centre (factors 0.25 to 5; `size(id, 2)` = both ×2; `rect("A", x, y, 3, 1)` starts stretched). Sizes show in frames, the animated SVG and the MP4.

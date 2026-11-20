@@ -3,6 +3,8 @@
 Draw a stage, define behaviour (GUI steps or Lua), get SVG frames, an animated SVG and an MP4.
 JavaScript (ES modules) + Lua via Fengari; the same `core/` runs in the browser and in Node.
 
+**Lua API reference:** [docs/LUA_API.md](docs/LUA_API.md).
+
 **Read first:** [HANDOFF.md](HANDOFF.md) (state, decisions, checks, known issues, how to work with
 the user), then [ARCHITECTURE.md](ARCHITECTURE.md) and [TODO.md](TODO.md).
 
@@ -27,8 +29,8 @@ claude mcp add gepv1 -- node $PWD/node/mcp.js   # the AI tools over MCP (core/ai
   (`core/instructions.js`). Check changes with `node tools/ai_eval.mjs` (write new prompts before
   tuning; report the fresh score). Plugins are built only from the core tools.
 - Restart `npm start` after changing `core/` or `node/`: the server keeps the modules it loaded.
-- New API function → add it to `API_NAMES` in `core/lua_api.js`, the ARCHITECTURE API list and the
-  API hint in `web/index.html`.
+- New API function → add it to `API_NAMES` in `core/lua_api.js`, the ARCHITECTURE API list, the
+  API hint in `web/index.html` and a `### name` section in `docs/LUA_API.md` (a test checks both).
 - Anything that moves must stay exact in every frame: record commands, bake simulations, and keep
   the player, still frames and the animated SVG in agreement (`npm run check:animated`).
 - Keep README, ARCHITECTURE, TODO and HANDOFF current with every change.

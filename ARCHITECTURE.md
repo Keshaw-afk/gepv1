@@ -328,6 +328,9 @@ background (a transparent one becomes white), because otherwise transparent area
 
 ## 5. Lua API (complete V1 surface)
 
+The user-facing reference, with arguments, timing, limits, errors and examples, is
+[docs/LUA_API.md](docs/LUA_API.md). `test/lua_api_doc.test.js` runs every example in it.
+
 ```lua
 node(label, x, y)       -- create a circle with a text label; returns id
 rect(label, x, y)       -- a rounded rectangle with a label
