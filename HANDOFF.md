@@ -180,7 +180,7 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 92 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference, code → steps) | all pass |
+| `npm test` | 93 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference, code → steps) | all pass |
 | `node tools/ai_eval.mjs` | small-model eval: step-by-step prompts through the assistant's loop (Ollama qwen3:0.6b) | see the AI round 2 note |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
 | `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 6 cases (dfs, network, edge, sizes, curves, stretch) | open in Chrome: title says `20337 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |

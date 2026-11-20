@@ -16,16 +16,20 @@ plays in the player, and what gives the still frames, the animated SVG and the M
 stage.lua  →  steps.lua  →  script.lua
 ```
 
-The three files run one after another in **one** Lua state, so they share one clock and the same
-globals. The Build tab writes the first two for you:
+The files run one after another in **one** Lua state, so they share one clock and the same globals:
 
 - **stage.lua** is the starting picture.
-- **steps.lua** holds the steps and keyframes you made in Build.
-- **script.lua** is the Code tab.
+- **steps.lua** is the keyframes, made on the canvas or typed in the **Code** tab (a REPL). Each
+  entry you type becomes a keyframe. An entry whose changes all start together becomes ordinary
+  steps; anything else (waits, loops, algorithms) is a *code keyframe*, played as written inside
+  `do … end; finish()`. So `local` variables stay inside their entry, and globals carry on.
+- **script.lua** is code that plays after all the keyframes. It's for the command line, and for
+  projects from before the REPL.
 
-A variable made in stage.lua, such as `A`, can be used in the script. When an object's label is a
-valid Lua name, the editor names the variable after it: `A = node("A", 100, 180)`. Other labels get a
-generated name; to see it, open **stage.lua and steps.lua (generated)** in Build.
+A variable made in stage.lua, such as `A`, can be used in later code. When an object's label is a
+valid Lua name, the editor names the variable after it: `A = node("A", 100, 180)`. A name you typed
+in the REPL (`b = node("ball", …)`) is kept. Other labels get a generated name; the Code tab shows
+every keyframe as Lua, so you can see it there.
 
 ## Time: only `wait` moves the clock
 

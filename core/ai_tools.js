@@ -320,6 +320,13 @@ const sec = (v) => `${Math.round(v * 10) / 10}`;
 const when = (p) => {
   const s = spans(p.steps).at(-1);
   if (!s) return 'in the starting picture';
+  // a code keyframe's length is known only when it runs: say what it comes after, not a time
+  const code = p.steps.slice(0, s.start).findLastIndex((x) => x.op === 'code');
+  if (code >= 0) {
+    const k = keyframes(p.steps).filter((f) => f.start <= code && p.steps[f.start].op !== 'wait').length;
+    const len = s.to - s.from, gap = s.from - spans(p.steps).find((f) => f.start === code).to;
+    return `${gap > 0 ? `${sec(gap)} s ` : ''}after code keyframe ${k}${len > 0 ? `, for ${sec(len)} s` : ''}`;
+  }
   return s.to > s.from ? `from ${sec(s.from)} to ${sec(s.to)} s` : `at ${sec(s.from)} s`;
 };
 const total = (p) => spans(p.steps).at(-1)?.to ?? 0;

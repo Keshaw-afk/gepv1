@@ -2,7 +2,7 @@
 // Everything the GUI makes is turned into Lua (stage.lua, steps.lua) and run by the same engine
 // as hand-written code (script.lua).
 
-import { runProgram } from '../core/lua_api.js';
+import { runProgram, ScriptError } from '../core/lua_api.js';
 import { toStageLua } from '../core/stage_file.js';
 import { buildSteps, stepsToLua, pruneSteps, toEditorIds, stepNames, nextStepId, sourceOf, reshapePath, keyframes, keyframeEndAt, keepKeyframes, removeStep, recordSteps, INSTANT, RUNS_TIME } from '../core/steps.js';
 import { Scene, DEFAULT_EDGE_COLOR } from '../core/scene.js';
@@ -534,7 +534,8 @@ function showPoint() {
   try {
     const upto = steps.slice(0, point);
     const built = buildSteps(upto, editor.scene);
-    const result = runProgram(fengari, { stage: toStageLua(editor.scene), steps: built.code });
+    let result;
+    try { result = runProgram(fengari, { stage: toStageLua(editor.scene), steps: built.code }); } catch (e) { throw new Error(codeKeyframeError(e.message, built)); }
     showError(null);
     const view = toEditorIds(sceneAt(result.timeline, result.timeline.durationMs), result, editor.scene, upto, built.stepAtLine);
     const trails = tweens(result.timeline)
@@ -795,6 +796,15 @@ function replSay(text, error = false) {
   $('repl-msg').classList.toggle('error', error);
 }
 
+/** "steps.lua:40: …" from inside a code keyframe -> "Keyframe 3 (code), line 2: …"; other messages unchanged. */
+function codeKeyframeError(message, built) {
+  const m = /^steps\.lua:(\d+):\s*/.exec(message);
+  const j = m ? built.stepAtLine[Number(m[1])] : undefined;
+  if (j === undefined || steps[j]?.op !== 'code') return message;
+  const n = keyframes(steps).filter((f) => f.start <= j && steps[f.start].op !== 'wait').length;
+  return `Keyframe ${n} (code), line ${Number(m[1]) - built.stepAtLine.indexOf(j)}: ${message.slice(m[0].length)} Change it in the Code tab (Edit).`;
+}
+
 /** "steps.lua:12: …" in a code keyframe -> "line 3: …" of what was typed. */
 function replError(message, built, index) {
   const m = /^steps\.lua:(\d+):\s*/.exec(message);
@@ -815,7 +825,7 @@ function runEntry({ fromOldCode = false } = {}) {
     const extra = r.steps.slice(upto.length);
     if (keyframes(extra).length <= 1 && !extra.some((s) => s.op === 'wait')) { added = extra; scene = r.scene; }
   } catch (e) {
-    if (!(e instanceof ConvertError)) return replSay(replError(e.message), true);
+    if (e instanceof ScriptError) return replSay(replError(e.message), true); // anything else: a code keyframe
   }
   if (!added) { // a code keyframe: check that it runs here
     added = [{ op: 'code', id: nextStepId([...steps]), lua }];
@@ -964,7 +974,8 @@ function run() {
     const prog = { stage: toStageLua(editor.scene), steps: built.code, script: scriptBox.value };
     const key = JSON.stringify(prog);
     if (key === lastKey && player.result) { showError(null); return 'same'; }
-    const result = runProgram(fengari, prog);
+    let result;
+    try { result = runProgram(fengari, prog); } catch (e) { throw new Error(codeKeyframeError(e.message, built)); }
     showError(null);
     Object.assign(player, { result, playing: false });
     lastProgram = prog;

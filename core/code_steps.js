@@ -10,7 +10,7 @@
 import { runProgram } from './lua_api.js';
 import { Scene } from './scene.js';
 import { toStageLua } from './stage_file.js';
-import { buildSteps, editorIdMap, nextStepId } from './steps.js';
+import { buildSteps, editorIdMap, nextStepId, isLocked } from './steps.js';
 import { sceneAt, frameTimes } from './player.js';
 import { sizeOf } from './shapes.js';
 
@@ -38,7 +38,12 @@ export function codeToSteps(fengari, scene, steps, script, { taken = steps } = {
   const out = steps.map((s) => ({ ...s }));
   const pic = Scene.from(JSON.parse(JSON.stringify(scene)));
   let k = Number(nextStepId([...steps, ...taken]).slice(1));
-  const target = (c) => ids.get(c.id);
+  // an object only code can name (made by a code keyframe): steps can't refer to it
+  const known = (id, c) => {
+    if (id === undefined || isLocked(id)) throw new ConvertError(`Line ${c.src.line} changes ${c.name ?? 'an object'}, which a code keyframe made: only code can change it.`);
+    return id;
+  };
+  const target = (c) => known(ids.get(c.id), c);
 
   // commands that start together
   const groups = [];
@@ -84,7 +89,7 @@ export function codeToSteps(fengari, scene, steps, script, { taken = steps } = {
     if (c.op === 'create') {
       const id = `s${k++}`;
       ids.set(c.id, id);
-      return { op: 'connect', id, a: ids.get(c.props.a), b: ids.get(c.props.b), directed: !!c.props.directed };
+      return { op: 'connect', id, a: known(ids.get(c.props.a), c), b: known(ids.get(c.props.b), c), directed: !!c.props.directed };
     }
     if (c.op === 'remove') {
       // removing a node removes its lines too: one step does both

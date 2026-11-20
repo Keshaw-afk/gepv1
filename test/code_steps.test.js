@@ -63,3 +63,11 @@ test('REPL entries keep the variable names typed, so the next entry can use them
   assert.match(buildSteps(d.steps, d.scene).code, /q = rect\("queue", 320, 300\)[\s\S]*color\(q, "red"/);
   assert.ok(d.steps.slice(-2).every((s) => s.id === undefined || s.id === 's8'));
 });
+
+test('an entry that changes an object a code keyframe made stays code (not a crash)', () => {
+  const steps = [{ op: 'code', id: 's1', lua: 'x = node("x", 100, 100); wait(0.5)' }];
+  assert.throws(() => codeToSteps(fengari, new Scene(), steps, 'move(x, 300, 100, 1)'), (e) => e instanceof ConvertError && /a code keyframe made/.test(e.message));
+  const both = [...steps, { op: 'code', id: 's2', lua: 'move(x, 300, 100, 1)' }];
+  const r = runProgram(fengari, { steps: buildSteps(both, new Scene()).code });
+  assert.equal(r.timeline.durationMs, 1500);
+});
