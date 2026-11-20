@@ -665,7 +665,11 @@ function renderSteps() {
       const w = el('span', 'what');
       w.append(el('b', null, `Keyframe ${n}`));
       if (recording() && here && !newKeyframe) w.append(el('span', 'rec', ' ● recording'));
-      head.append(el('span', 'num', String(n)), w);
+      const x = el('button', 'x', '×');
+      x.type = 'button';
+      x.title = 'Delete this keyframe';
+      x.addEventListener('click', (e) => { e.stopPropagation(); deleteKeyframe(group); });
+      head.append(el('span', 'num', String(n)), w, x);
       // one duration for the keyframe; when its changes last different times (an AI can make that),
       // each timed change gets its own field instead, so editing one doesn't flatten the others
       const mixed = new Set(timed.map((s) => s.dur)).size > 1;
@@ -838,9 +842,32 @@ function keepIds(old, added) {
   }
 }
 
+/**
+ * Deletes a whole keyframe or pause (its steps). Later steps that used an object it made go too, as
+ * when the object is deleted; one Ctrl+Z brings it all back. Returns what to tell the user.
+ */
+function deleteKeyframe(group) {
+  const gone = new Set(group);
+  const before = steps.length - group.length;
+  const pause = group[0]?.op === 'wait';
+  point = steps.slice(0, point).filter((s) => !gone.has(s)).length;
+  const copies = steps.map((s) => ({ ...s })); // as removeStep: the steps in history stay as they were
+  steps = keepKeyframes(copies, copies.filter((_, i) => !gone.has(steps[i])));
+  point = keyframeEndAt(steps, point);
+  replEditing = null;
+  stepsChanged();
+  const dropped = before - steps.length;
+  return `${pause ? 'Pause' : 'Keyframe'} deleted${dropped ? `, and ${dropped} later step${dropped === 1 ? '' : 's'} that used what it made` : ''}. Ctrl+Z brings it back.`;
+}
+
 function runEntry({ fromOldCode = false } = {}) {
   const lua = replBox.value.replace(/\s+$/, '');
-  if (!lua.trim()) return false;
+  if (!lua.trim()) { // an emptied box while editing deletes that keyframe
+    if (!replEditing) return false;
+    if (!replEditing.every((s) => steps.includes(s))) { replEditing = null; return replSay('That keyframe has changed since; nothing was deleted.', true); }
+    replSay(deleteKeyframe(replEditing));
+    return true;
+  }
   const old = replEditing ?? [];
   const at = replEditing ? steps.indexOf(old[0]) : steps.length; // a new entry always goes at the end
   if (at < 0 || old.some((s, i) => steps[at + i] !== s)) { replEditing = null; return replSay('That keyframe has changed since; nothing was replaced.', true); }
@@ -918,11 +945,19 @@ function renderRepl() {
         e.stopPropagation();
         replEditing = group;
         replBox.value = code;
-        replSay('Editing this keyframe: Enter replaces it, Esc leaves it as it is.');
+        replSay('Editing this keyframe: Enter replaces it (empty deletes it), Esc leaves it as it is.');
         replBox.focus();
         renderRepl();
       });
-      head.append(edit);
+      const del = el('button', 'repl-edit', 'Delete');
+      del.type = 'button';
+      del.title = 'Delete this keyframe (Ctrl+Z brings it back)';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (replEditing && replEditing[0] === group[0]) replBox.value = '';
+        replSay(deleteKeyframe(group));
+      });
+      head.append(edit, del);
     }
     li.append(head, el('pre', null, code));
     li.addEventListener('click', () => setPoint(k));
@@ -940,7 +975,7 @@ function renderRepl() {
   }
   const count = keyframes(steps).filter((f) => steps[f.start].op !== 'wait').length;
   $('repl-where').textContent = replEditing
-    ? 'Enter replaces the keyframe being edited · Esc leaves it as it is'
+    ? 'Enter replaces the keyframe being edited (empty: deletes it) · Esc leaves it as it is'
     : !steps.length ? 'Enter adds keyframe 1 (or, for shapes you make, the starting picture)' : `Enter adds keyframe ${count + 1}, at the end`;
   const cur = log.querySelector('.current'); // scroll the log only, not the page
   if (cur && (cur.offsetTop < log.scrollTop || cur.offsetTop + cur.offsetHeight > log.scrollTop + log.clientHeight)) log.scrollTop = cur.offsetTop - 8;

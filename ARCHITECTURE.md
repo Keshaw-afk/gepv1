@@ -177,7 +177,7 @@ keyframe and as script.lua. Objects a code keyframe makes get ids `<step id>.<n>
 may set (Record still works). The log above the box is generated from the steps (`buildSteps` lines
 per keyframe; a code keyframe shows its own text), so the GUI and the code can't drift. The variable
 typed for an object (`b = node("ball", …)`) is kept (`name` on the add step or stage node) so the
-next entry can use it. **Edit** puts any keyframe's Lua (or a pause's `wait(t)`) in the box; Enter
+next entry can use it. **Delete** (or Enter on an emptied box while editing, or the × on a keyframe row) removes the whole keyframe with `deleteKeyframe`; later steps that used what it made are pruned as usual. **Edit** puts any keyframe's Lua (or a pause's `wait(t)`) in the box; Enter
 replaces that keyframe's steps in place, and `keepIds` gives re-made objects (same kind and label, in
 order) their old ids, so later steps that use them aren't pruned; an edited code keyframe keeps its
 step id, so its objects keep theirs. `codeToSteps` also refuses (ConvertError) what can't be exact as keyframes:

@@ -296,7 +296,8 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 .repl-head { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
 .repl-head b { font-weight: 600; color: var(--text); }
 .repl-item.code .repl-head b { color: var(--accent); }
-.repl-edit { margin-left: auto; font-size: 0.75rem; padding: 1px 8px; }
+.repl-edit:first-of-type { margin-left: auto; }
+.repl-edit { font-size: 0.75rem; padding: 1px 8px; }
 .repl-item pre { margin: 4px 0 0; font: 0.8rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9.5em; overflow: auto; }
 .repl-where { margin: 8px 0 4px; font-size: 0.8rem; color: var(--muted); }
 .repl-in { display: flex; gap: 6px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--panel); }
