@@ -98,7 +98,8 @@ remove(edge_of(A, C))
 tree_layout(A, 0.5); wait(0.5)                -- glide the tree into tidy rows
 ```
 While building steps, the canvas shows the stage *after* the steps, computed by the same engine,
-with faint trails where things moved. Objects that steps create have their own ids (`s1`, `s2`, …;
+with faint trails of the moves in the keyframe shown (only that keyframe's, only for objects still
+there at its end; none for a pause or a new, empty keyframe: `keyframeTrails` in web/app.js). Objects that steps create have their own ids (`s1`, `s2`, …;
 stage objects have numbers), so later steps can colour, move or remove them. A step stays only
 while its object exists at that point in the list: deleting the step that added an object also
 deletes the steps that used it.

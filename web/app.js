@@ -455,7 +455,7 @@ function nextKeyframe() {
   setPoint(steps.length);
   newKeyframe = true;
   renderSteps();
-  syncInspector();
+  showPoint(); // the new keyframe has no trails yet
 }
 $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); });
 
@@ -540,15 +540,29 @@ function showPoint() {
     try { result = runProgram(fengari, { stage: toStageLua(editor.scene), steps: built.code }); } catch (e) { throw new Error(codeKeyframeError(e.message, built)); }
     showError(null);
     const view = toEditorIds(sceneAt(result.timeline, result.timeline.durationMs), result, editor.scene, upto, built.stepAtLine);
-    const trails = tweens(result.timeline)
-      .filter((tw) => tw.prop === 'pos' && (tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
-      .map((tw) => tw.path ?? [tw.from, tw.to]); // a curved move draws its curve
-    editor.setMode('behaviour', view, trails);
+    editor.setMode('behaviour', view, keyframeTrails(result, built, upto));
   } catch (e) {
     showError(e.message);
     editor.setMode('behaviour', null);
   }
   syncInspector();
+}
+
+/**
+ * The trails of the keyframe shown (the one ending at the point): only its own moves, and only of objects
+ * still there at its end. A new, still empty keyframe (+ New keyframe) has none yet; nor has a pause.
+ */
+function keyframeTrails(result, built, upto) {
+  const f = keyframes(upto).at(-1);
+  if (!f || newKeyframe || upto[f.start].op === 'wait') return [];
+  const own = result.timeline.commands.filter((c) => c.src?.file === 'steps.lua' && built.stepAtLine[c.src.line] >= f.start);
+  if (!own.length) return [];
+  const from = Math.min(...own.map((c) => c.t));
+  const end = sceneAt(result.timeline, result.timeline.durationMs);
+  const there = new Set(end.nodes.map((n) => n.id));
+  return tweens(result.timeline)
+    .filter((tw) => tw.prop === 'pos' && tw.t0 >= from && there.has(tw.id) && (tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
+    .map((tw) => tw.path ?? [tw.from, tw.to]); // a curved move draws its curve
 }
 
 /**
