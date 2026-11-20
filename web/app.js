@@ -339,9 +339,16 @@ function deleteUnrecorded() {
   everythingChanged();
 }
 
+/**
+ * A new starting picture (a loaded stage.lua, or empty for Clear picture). Goes to Start to show it,
+ * and redraws everything: the steps that used objects no longer there are dropped (Undo brings them back).
+ */
 function loadStage(text) {
   try {
     editor.setScene(runProgram(fengari, { stage: text }).scene);
+    point = 0;
+    newKeyframe = false;
+    everythingChanged();
     showError(null);
   } catch (e) {
     showError(e.message);
