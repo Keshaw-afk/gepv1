@@ -28,7 +28,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
   arrange: 'Arrange: changes adjust what is there · Click empty space to add a shape (it appears at the moment shown) · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
-  record: 'Record: changes go into the current keyframe and play together · N: next keyframe · Drag in a curve for a curved move · Drag again to carry on a move · Ctrl+Z: undo',
+  record: 'Record: changes go into the current keyframe and play together · N: new keyframe at the end · Drag in a curve for a curved move · Drag again to carry on a move · Ctrl+Z: undo',
   start: 'The starting picture · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   steps: 'Every change here becomes a step · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects · Ctrl+Z: undo',
   code: 'From the code (read-only) · Change it in the Code tab, or turn it into steps · Click Start or a keyframe to edit again',
@@ -43,7 +43,7 @@ let steps = [];
 // moved, sized, coloured or added the object).
 let point = 0;
 let mode = 'arrange';
-// Record: changes join the keyframe that ends at the point, until "Next keyframe" starts a new one
+// Record: changes join the keyframe that ends at the point, until "+ New keyframe" starts one at the end
 let newKeyframe = false;
 // The moment of the code shown on the canvas (an index into codeMoments().marks), or null
 let codeAt = null;
@@ -183,7 +183,7 @@ function syncInspector() {
     b.title = recording() ? 'The selection disappears at this step (Delete)' : 'Delete the selection for good (Delete)';
   }
   for (const b of $('palette').children) b.disabled = !sel.length;
-  $('dur').disabled = $('pause').disabled = $('next-key').disabled = !recording();
+  $('dur').disabled = $('pause').disabled = !recording();
   const frames = keyframes(steps.slice(0, point)), last = frames.at(-1);
   const where = point === 0 ? 'the start' : steps[last.start].op === 'wait' ? 'a pause' : `keyframe ${frames.filter((f) => steps[f.start].op !== 'wait').length}`;
   $('target').innerHTML = codeAt !== null
@@ -191,7 +191,7 @@ function syncInspector() {
     : recording()
     ? newKeyframe || point === 0 || steps[point - 1]?.op === 'wait'
       ? `<b>Recording</b> a new keyframe after ${where}. Everything you change now plays together.`
-      : `<b>Recording</b> into keyframe ${keyframes(steps).filter((f) => steps[f.start].op !== 'wait' && f.end <= point).length}: everything you change plays together. <b>Next keyframe</b> (N) when it is done.`
+      : `<b>Recording</b> into keyframe ${keyframes(steps).filter((f) => steps[f.start].op !== 'wait' && f.end <= point).length}: everything you change plays together. <b>+ New keyframe</b> (N) for the next one.`
     : point === 0
       ? '<b>Arranging</b> the starting picture: place, drag, resize and colour freely. Nothing is recorded.'
       : `<b>Arranging</b> at ${where}: a change adjusts the step (or the starting picture) that put things there; a new shape appears at this moment.`;
@@ -434,7 +434,7 @@ function stepDur() {
 let justAdded = new Set(); // the steps that slide into the list
 /**
  * Records changes at the current point: they join the keyframe there (a second change to the same
- * thing updates it), or begin a new keyframe after "Next keyframe", at the start or after a pause.
+ * thing updates it), or begin a new keyframe after "+ New keyframe" (at the end), at the start or after a pause.
  */
 function addSteps(list) {
   if (!list.length) return;
@@ -449,8 +449,10 @@ function addSteps(list) {
 }
 $('pause').addEventListener('click', () => addSteps([{ op: 'wait' }]));
 $('next-key').addEventListener('click', nextKeyframe);
+/** + New keyframe: go to the end and record; what is changed next is a new keyframe there. */
 function nextKeyframe() {
-  if (!recording()) return;
+  if (!recording()) setMode('record');
+  setPoint(steps.length);
   newKeyframe = true;
   renderSteps();
   syncInspector();
@@ -687,7 +689,7 @@ function renderSteps() {
         list.append(li);
       });
     }
-    if (recording() && here && (newKeyframe || first.op === 'wait')) list.append(marker('The next keyframe goes here'));
+    if (recording() && here && (newKeyframe || first.op === 'wait')) list.append(marker('The new keyframe goes here'));
   }
   renderCodeRows(list);
   renderRepl();
@@ -840,7 +842,7 @@ function runEntry({ fromOldCode = false } = {}) {
   const lua = replBox.value.replace(/\s+$/, '');
   if (!lua.trim()) return false;
   const old = replEditing ?? [];
-  const at = replEditing ? steps.indexOf(old[0]) : point;
+  const at = replEditing ? steps.indexOf(old[0]) : steps.length; // a new entry always goes at the end
   if (at < 0 || old.some((s, i) => steps[at + i] !== s)) { replEditing = null; return replSay('That keyframe has changed since; nothing was replaced.', true); }
   const upto = steps.slice(0, at), after = steps.slice(at + old.length);
   let added = null, scene = editor.scene;
@@ -865,7 +867,7 @@ function runEntry({ fromOldCode = false } = {}) {
   replBack = replPast.length;
   editor.scene = scene;
   steps = [...upto, ...added, ...after];
-  point = keyframeEndAt(steps, upto.length + added.length);
+  point = steps.length; // the canvas shows the end, where the next entry goes
   codeAt = null;
   newKeyframe = false;
   justAdded = new Set(added);
@@ -936,6 +938,10 @@ function renderRepl() {
     const title = first.op === 'wait' ? 'Pause' : `Keyframe ${++n}${first.op === 'code' ? ' · code' : ''}`;
     item(title, code, f.end, { current: point === f.end && codeAt === null, step: first, group: steps.slice(f.start, f.end) });
   }
+  const count = keyframes(steps).filter((f) => steps[f.start].op !== 'wait').length;
+  $('repl-where').textContent = replEditing
+    ? 'Enter replaces the keyframe being edited · Esc leaves it as it is'
+    : !steps.length ? 'Enter adds keyframe 1 (or, for shapes you make, the starting picture)' : `Enter adds keyframe ${count + 1}, at the end`;
   const cur = log.querySelector('.current'); // scroll the log only, not the page
   if (cur && (cur.offsetTop < log.scrollTop || cur.offsetTop + cur.offsetHeight > log.scrollTop + log.clientHeight)) log.scrollTop = cur.offsetTop - 8;
 }
@@ -1246,7 +1252,7 @@ window.addEventListener('keydown', (e) => {
     if (stageEditing()) editor.nudge(dx, dy);
     else adjustMoves(editor.selectedNodes().map((nd) => ({ id: nd.id, x: nd.x + dx, y: nd.y + dy })));
     e.preventDefault();
-  } else if (key === 'n' && !e.shiftKey && recording()) {
+  } else if (key === 'n' && !e.shiftKey) {
     nextKeyframe();
   } else if (key === 'g' && !e.shiftKey) {
     toggleSnap();

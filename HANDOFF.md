@@ -58,7 +58,7 @@ for how it works and [TODO.md](TODO.md) for what's left. The Lua API reference i
 > Durations in the GUI are 0.1–10 s (`seconds()` in web/app.js; an empty field = 0.5 s). It used to read an
 > empty field as 0, so curved moves were saved with 0 s and jumped; `visibleMoves` gives saved 0 s moves 0.5 s.
 > **Restart `npm start` after changing core/**: the server keeps the core modules it loaded (MP4 export). Record works in **keyframes** (`recordSteps`, `keyframes`,
-> `keepKeyframes` in core/steps.js): changes join the current keyframe until Next keyframe (N); the steps
+> `keepKeyframes` in core/steps.js): changes join the current keyframe until + New keyframe (N), which goes to the end, switches to Record and starts a new keyframe there; the steps
 > list shows Keyframe 1, 2… with their changes. The old per-step "with previous" select is gone.
 > **Third pass:** Stage and Behaviour are one **Build** tab (tabs: Build → Result). The steps list starts
 > with **Start**; clicking a row sets `point` (null = Start, k = after k steps) and the canvas shows that point;

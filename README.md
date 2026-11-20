@@ -27,8 +27,8 @@ The page has two tabs: **Build → Result**.
      looking at: at Start it is part of the starting picture, later it gets a keyframe of its own there.
      (In Record too: an object added while a keyframe moves things appears when that keyframe ends.)
    - **● Record:** changes are recorded in **keyframes**. Everything you change goes into the current
-     keyframe and plays together: drag A, drag B, colour C, and all three happen at once. Press **Next
-     keyframe ▸** (or N) to start the next one; it plays after this one. Dragging the same object again
+     keyframe and plays together: drag A, drag B, colour C, and all three happen at once. Press **+ New
+     keyframe** (or N, from either mode) to add one at the end; it plays after everything else. Dragging the same object again
      in a keyframe carries its move on (one move through both places); a new colour or size replaces
      the old one. **Drag in a curve for a curved move** (smoothed, at even speed). Click a keyframe to
      record into it again; each keyframe has its duration, and pauses sit between keyframes. If a new
@@ -41,9 +41,9 @@ The page has two tabs: **Build → Result**.
    type **W** and **H**. The label never stretches. Undo/redo (Ctrl+Z / Ctrl+Shift+Z), copy and paste,
    arrow keys to nudge (at Start), and an optional snap-to-grid (G) are there too, and a **coordinates** guide (the ∟ button: x and y on the canvas, and where the pointer is, for instructions like "draw a circle at (100, 180)"). Your work is autosaved
    in the browser; **New project** starts again.
-   - **Code** is a REPL: type Lua and press Enter, and it becomes a keyframe at the moment shown
+   - **Code** is a REPL: type Lua and press Enter, and it becomes the next keyframe, at the end
      (Shift+Enter for a new line, ↑ for what you typed before). Above the box, Start and every keyframe
-     are shown as Lua, whether you made them by typing or on the canvas; click one to work there.
+     are shown as Lua, whether you made them by typing or on the canvas; click one to see it.
      Changes that all start together become ordinary keyframes you can also change on the canvas.
      Anything else (waits, loops, algorithms such as DFS from **Example…**) is one **code keyframe**,
      played as written. **Edit** on any keyframe or pause puts its Lua back in the box, and Enter

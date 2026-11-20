@@ -165,8 +165,9 @@ it is no change in the timeline, no moment and no trace line.
 
 ### The REPL (Code tab) and code keyframes
 
-Each entry is run at the point shown, after stage.lua and the steps before it, and inserted there
-(like Record). `codeToSteps` (`core/code_steps.js`) turns it into steps: when everything starts
+Each new entry is run after stage.lua and all the steps, and added at the end (a line above the box
+says what Enter will do); clicking a keyframe in the log only shows that moment. Inserting in the
+middle is done on the canvas. `codeToSteps` (`core/code_steps.js`) turns it into steps: when everything starts
 together (one keyframe), it becomes plain steps, editable on the canvas; at Start, objects it makes at
 once go into the starting picture. Anything else becomes one step `{op: 'code', id, lua}`, which
 steps.lua plays verbatim as `do <lua> end; finish()` (`finish()` waits until every started change has
@@ -325,7 +326,7 @@ else would make it exist from 0 s, before the moment shown.
 **Keyframes:** steps whose `together` flag is set play with the one before; a run of them is a keyframe
 (`keyframes()` in core/steps.js, a pause is one on its own). The point always sits at a keyframe's end
 (`keyframeEndAt`). Record goes through `recordSteps(steps, point, changes, {join, appearAtEnd})`: changes join the
-keyframe ending at the point (taking its duration) unless "Next keyframe" asked for a new one; with
+keyframe ending at the point (taking its duration) unless "+ New keyframe" asked for a new one (it goes to the end and switches to Record, from either mode); with
 `appearAtEnd` (the GUI) something that only appears does not join a keyframe where things take time
 (it would pop up at its start, before the picture shown) but gets its own keyframe at the point; a second
 change to the same object's position merges into one `path` step, a colour or size replaces. Removing or
