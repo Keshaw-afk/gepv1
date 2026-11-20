@@ -182,7 +182,7 @@ typed for an object (`b = node("ball", …)`) is kept (`name` on the add step or
 next entry can use it. **Delete** (or Enter on an emptied box while editing, or the × on a keyframe row) removes the whole keyframe with `deleteKeyframe`; later steps that used what it made are pruned as usual. **Edit** puts any keyframe's Lua (or a pause's `wait(t)`) in the box; Enter
 replaces that keyframe's steps in place, and `keepIds` gives re-made objects (same kind and label, in
 order) their old ids, so later steps that use them aren't pruned; an edited code keyframe keeps its
-step id, so its objects keep theirs. `codeToSteps` also refuses (ConvertError) what can't be exact as keyframes:
+step id, so its objects keep theirs. Code that leaves a new global table (`t = grid(…)`) is refused too (`tables` from `runProgram`), so it stays a code keyframe and `t` carries over to later entries. `codeToSteps` also refuses (ConvertError) what can't be exact as keyframes:
 overlapping changes, instant moves; it checks every conversion frame by frame. Old projects' script.lua
 still plays after the steps, listed read-only under them.
 

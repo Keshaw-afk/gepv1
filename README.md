@@ -79,7 +79,8 @@ For academic animations:
   `[[$x^2 \le n$]]`, `\times`, `\nwarrow`, Greek letters, and shortcuts like `<=` and `->`. Write it in
   `[[…]]` strings, since Lua reads `"\t…"` as a tab. Symbols, subscripts and superscripts only.
 - **Example:** `examples/lcs.lua` fills the dynamic-programming table of the longest common
-  subsequence and traces the answer back (Code → Example… → LCS table).
+  subsequence and traces the answer back (Code → Example… → LCS table). As a video:
+  `node node/cli.js /dev/null examples/lcs.lua --scale 2 --fps 30 --video out/lcs_dp_table.mp4`.
 
 ## Use it with an AI
 

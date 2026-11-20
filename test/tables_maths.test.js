@@ -74,7 +74,7 @@ test('the animated SVG shows each label for exactly its stretch of time', () => 
 test('code that changes a label stays a code keyframe; a grid at the start goes into the picture', () => {
   const scene = run('A = node("A", 100, 100)').scene;
   assert.throws(() => codeToSteps(fengari, scene, [], 'label(A, "x")'), (e) => e instanceof ConvertError && /changes a label/.test(e.message));
-  const r = codeToSteps(fengari, new Scene(), [], 't = grid(1, 2, 100, 100)\nlabel(t[1][2], "5")');
+  const r = codeToSteps(fengari, new Scene(), [], 'local t = grid(1, 2, 100, 100)\nlabel(t[1][2], "5")');
   assert.deepEqual(r.scene.nodes().map((n) => [n.shape, n.label]), [['cell', ''], ['cell', '5']]);
   assert.equal(r.steps.length, 0);
 });
@@ -86,4 +86,13 @@ test('the LCS example fills the textbook table and finds BCBA', () => {
   assert.equal(cells.length, 9 * 8);
   assert.deepEqual(cells.slice(8 * 8), ['B', '0', '↖1', '↑2', '↑2', '↑3', '↖4', '↑4'], 'the last row');
   assert.ok(end.nodes.some((nd) => nd.label === 'LCS = BCBA  (length 4)'));
+});
+
+test('a table kept in a variable (t = grid(…)) stays a code keyframe, so later entries can use it', () => {
+  assert.throws(() => codeToSteps(fengari, new Scene(), [], 't = grid(2, 3, 100, 100)'), (e) => e instanceof ConvertError && /keeps t/.test(e.message));
+  // as the REPL does: the entry becomes a code keyframe, then the next entry uses t
+  const steps = [{ op: 'code', id: 's1', lua: 't = grid(2, 3, 100, 100)' }];
+  assert.throws(() => codeToSteps(fengari, new Scene(), steps, 'label(t[1][1], "5")'), (e) => e instanceof ConvertError, 'it runs (and, being on code-made cells, stays code)');
+  const local = codeToSteps(fengari, new Scene(), [], 'local t = grid(1, 2, 100, 100)\nlabel(t[1][2], "5")');
+  assert.equal(local.scene.nodes().length, 2, 'a local table is gone afterwards anyway: the cells go into the picture');
 });

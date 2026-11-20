@@ -142,6 +142,8 @@ cells with [`color`](#color).
 | `x, y` | the top-left corner, in pixels |
 | `w, h` | optional cell size factors, as for [`node`](#node) (a cell is 40 × 30 px at 1) |
 
+In the Code tab, `t = grid(…)` becomes a code keyframe so that later entries can still use `t`.
+
 ```lua
 t = grid(3, 4, 240, 120)          -- 3 rows of 4 cells, 160 × 90 px
 for c = 1, 4 do label(t[1][c], c) end

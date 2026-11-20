@@ -28,9 +28,13 @@ export function codeToSteps(fengari, scene, steps, script, { taken = steps } = {
   const built = buildSteps(steps, scene);
   const stage = toStageLua(scene);
   const full = runProgram(fengari, { stage, steps: built.code, script });
-  const t0 = runProgram(fengari, { stage, steps: built.code }).timeline.clockMs;
+  const before = runProgram(fengari, { stage, steps: built.code });
+  const t0 = before.timeline.clockMs;
   const cmds = full.timeline.commands.filter((c) => c.src?.file === 'script.lua');
   if (!cmds.length) throw new ConvertError('The code changes nothing, so there is nothing to turn into steps.');
+  // a table the code keeps (t = grid(…)) exists only while code runs: steps would lose it
+  const kept = [...full.tables].filter((name) => !before.tables.has(name));
+  if (kept.length) throw new ConvertError(`The code keeps ${kept.join(', ')} for later code, which steps can't, so it is kept as code.`);
 
   const ids = editorIdMap(full, scene, steps, built.stepAtLine); // program id -> editor id
   const ends = new Map(); // edge id (program) -> [a, b]

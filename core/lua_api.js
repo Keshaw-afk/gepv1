@@ -301,17 +301,22 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   const stageCommands = timeline.commands.length;
   run(steps, 'steps.lua');
   run(script, 'script.lua');
-  // the global variables that hold an object at the end (name -> id), e.g. ball = node("ball", …)
-  const globals = new Map();
+  // the global variables that hold an object at the end (name -> id), e.g. ball = node("ball", …),
+  // and those that hold a table of the program's own (e.g. t = grid(…)), which only code can use later
+  const globals = new Map(), tables = new Set();
+  const LIBRARIES = new Set(['_G', 'table', 'string', 'math']);
   lua.lua_pushglobaltable(L);
   lua.lua_pushnil(L);
   while (lua.lua_next(L, -2) !== 0) {
     if (lua.lua_type(L, -2) === lua.LUA_TSTRING && lua.lua_isinteger(L, -1)) {
       const name = to_jsstring(lua.lua_tostring(L, -2)), id = lua.lua_tointeger(L, -1);
       if (scene.get(id) && !API_NAMES.includes(name)) globals.set(name, id);
+    } else if (lua.lua_type(L, -2) === lua.LUA_TSTRING && lua.lua_istable(L, -1)) {
+      const name = to_jsstring(lua.lua_tostring(L, -2));
+      if (!LIBRARIES.has(name)) tables.add(name);
     }
     lua.lua_pop(L, 1);
   }
   lua.lua_pop(L, 1);
-  return { scene, timeline, log, stageCommands, globals };
+  return { scene, timeline, log, stageCommands, globals, tables };
 }
