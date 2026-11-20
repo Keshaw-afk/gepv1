@@ -259,6 +259,17 @@ summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 .steps li.change .what { padding-left: 10px; border-left: 2px solid var(--border); }
 .steps li.change.in-current .what { border-left-color: var(--accent); }
 .steps li.pause .num { color: var(--muted); }
+/* what the code does: read-only rows after the steps */
+.steps li.code-head { margin-top: 6px; border-top: 2px dashed var(--border); padding-top: 8px; }
+.steps li.code-head .num { color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.75rem; }
+.steps li.code-head .what { color: var(--muted); }
+.steps li.code-head .what b { color: var(--text); font-weight: 600; }
+.steps li.code-row .num { font-variant-numeric: tabular-nums; font-size: 0.72rem; }
+.steps li.code-row .what { color: var(--muted); }
+.steps li.code-row.current .what { color: var(--text); }
+.steps li.code-row .src { color: var(--muted); font-size: 0.75rem; font-family: ui-monospace, monospace; white-space: nowrap; }
+.steps li.code-note { display: block; color: var(--muted); font-size: 0.85rem; padding-left: 34px; }
+.steps li.code-note.error { color: var(--error); }
 
 /* the AI is editing: a quiet line under the status, in the accent colour */
 .ai-note { margin: -4px 0 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent); }

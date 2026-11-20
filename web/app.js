@@ -30,6 +30,7 @@ const HINTS = {
   record: 'Record: changes go into the current keyframe and play together · N: next keyframe · Drag in a curve for a curved move · Drag again to carry on a move · Ctrl+Z: undo',
   start: 'The starting picture · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   steps: 'Every change here becomes a step · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects · Ctrl+Z: undo',
+  code: 'From the code (read-only) · Change it in the Code tab, or turn it into steps · Click Start or a keyframe to edit again',
   result: '← →: previous / next frame (Shift: 10) · Home / End · [ ]: previous / next moment · Space: play / pause',
 };
 
@@ -43,8 +44,10 @@ let point = 0;
 let mode = 'arrange';
 // Record: changes join the keyframe that ends at the point, until "Next keyframe" starts a new one
 let newKeyframe = false;
-const recording = () => mode === 'record';
-const stageEditing = () => mode === 'arrange' && point === 0; // the editor edits the Scene directly
+// The moment of the code shown on the canvas (an index into codeMoments().marks), or null
+let codeAt = null;
+const recording = () => mode === 'record' && codeAt === null;
+const stageEditing = () => mode === 'arrange' && point === 0 && codeAt === null; // the editor edits the Scene directly
 
 function showError(msg) {
   $('error').hidden = !msg;
@@ -181,7 +184,9 @@ function syncInspector() {
   $('dur').disabled = $('pause').disabled = $('next-key').disabled = !recording();
   const frames = keyframes(steps.slice(0, point)), last = frames.at(-1);
   const where = point === 0 ? 'the start' : steps[last.start].op === 'wait' ? 'a pause' : `keyframe ${frames.filter((f) => steps[f.start].op !== 'wait').length}`;
-  $('target').innerHTML = recording()
+  $('target').innerHTML = codeAt !== null
+    ? `<b>Showing the code</b> at ${(codeMoments()?.marks[codeAt]?.t / 1000).toFixed(2)} s. It can only be changed in the <b>Code</b> tab; click <b>Start</b> or a keyframe to edit the picture again.`
+    : recording()
     ? newKeyframe || point === 0 || steps[point - 1]?.op === 'wait'
       ? `<b>Recording</b> a new keyframe after ${where}. Everything you change now plays together.`
       : `<b>Recording</b> into keyframe ${keyframes(steps).filter((f) => steps[f.start].op !== 'wait' && f.end <= point).length}: everything you change plays together. <b>Next keyframe</b> (N) when it is done.`
@@ -479,6 +484,7 @@ function stepsChanged({ keepSelection = false } = {}) {
 
 /** Work at a point: after the first k steps (0 = the start). */
 function setPoint(k) {
+  codeAt = null;
   point = keyframeEndAt(steps, Math.max(0, Math.min(steps.length, k))); // always the end of a keyframe
   newKeyframe = false;
   renderSteps();
@@ -488,6 +494,7 @@ function setPoint(k) {
 /** Arrange (nothing is recorded) or Record (every change becomes a step). */
 function setMode(next) {
   mode = next;
+  codeAt = null; // Arrange or Record: back to the steps
   for (const b of $$('[data-mode]')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
   $('editor').classList.toggle('recording', recording());
   renderSteps();
@@ -499,6 +506,8 @@ for (const b of $$('[data-mode]')) b.addEventListener('click', () => setMode(b.d
 // faint trails of their moves.
 function showPoint() {
   $('canvas-hint').textContent = HINTS[mode];
+  if (codeAt !== null && showCodeMoment()) return;
+  codeAt = null;
   editor.recording = recording();
   if (stageEditing()) { showError(null); editor.setMode('stage'); syncInspector(); return; }
   try {
@@ -594,7 +603,7 @@ function renderSteps() {
     return b;
   };
 
-  const start = el('li', `start${point === 0 ? ' current' : ''}`);
+  const start = el('li', `start${point === 0 && codeAt === null ? ' current' : ''}`);
   const what = el('span', 'what');
   what.append(el('b', null, 'Start'), ' the starting picture');
   start.append(el('span', 'num', '●'), what);
@@ -605,7 +614,7 @@ function renderSteps() {
   let n = 0;
   for (const f of keyframes(steps)) {
     const first = steps[f.start];
-    const here = point === f.end;
+    const here = point === f.end && codeAt === null;
     if (first.op === 'wait') { // a pause: one row
       const li = el('li', `pause${here ? ' current' : ''}`);
       const w = el('span', 'what');
@@ -651,6 +660,7 @@ function renderSteps() {
     }
     if (recording() && here && (newKeyframe || first.op === 'wait')) list.append(marker('The next keyframe goes here'));
   }
+  renderCodeRows(list);
   // keep the current point in view by scrolling the list only (scrollIntoView would move the whole page)
   const mark = list.querySelector('.marker') ?? list.querySelector('.current');
   if (mark && (mark.offsetTop < list.scrollTop || mark.offsetTop + mark.offsetHeight > list.scrollTop + list.clientHeight)) {
@@ -660,6 +670,88 @@ function renderSteps() {
   updateRunOrder();
 }
 
+// ---------- What the code does, read-only after the steps ----------
+// The Code tab runs after the steps. So that the picture and the list agree with it, the list shows
+// its changes (grouped by the time they finish, like Moments) under the steps, and clicking one shows
+// the picture then. Nothing here can be edited: the code is changed in the Code tab.
+const MAX_CODE_ROWS = 200;
+let codeCache = { key: null };
+
+/** { result, built, marks: [{ t, cmds }] } for the code after the current steps, { error }, or null without code. */
+function codeMoments() {
+  if (!codeLines()) return null;
+  let built, prog;
+  try {
+    built = buildSteps(steps, editor.scene);
+    prog = { stage: toStageLua(editor.scene), steps: built.code, script: scriptBox.value };
+  } catch (e) { return { error: e.message, marks: [] }; }
+  const key = JSON.stringify(prog);
+  if (codeCache.key === key) return codeCache;
+  try {
+    const result = runProgram(fengari, prog);
+    const ends = new Map();
+    for (const c of result.timeline.commands) {
+      if (c.src?.file !== 'script.lua') continue;
+      const end = c.t + (c.dur ?? 0);
+      if (!ends.has(end)) ends.set(end, []);
+      ends.get(end).push(c);
+    }
+    const marks = [...ends].sort((a, b) => a[0] - b[0]).map(([t, cmds]) => ({ t, cmds }));
+    codeCache = { key, result, built, marks };
+  } catch (e) {
+    codeCache = { key, error: e.message, marks: [] };
+  }
+  return codeCache;
+}
+
+function renderCodeRows(list) {
+  const code = codeMoments();
+  if (!code) return;
+  const head = el('li', 'code-head');
+  const w = el('span', 'what');
+  w.append(el('b', null, 'From the code'), ' read-only');
+  head.append(el('span', 'num', '{ }'), w);
+  list.append(head);
+  if (code.error) {
+    list.append(el('li', 'code-note error', `The code stops with an error: ${code.error}`));
+    return;
+  }
+  if (!code.marks.length) { list.append(el('li', 'code-note', 'The code changes nothing yet.')); return; }
+  code.marks.slice(0, MAX_CODE_ROWS).forEach((m, i) => {
+    const li = el('li', `code-row pickable${codeAt === i ? ' current' : ''}`);
+    const what = el('span', 'what');
+    m.cmds.forEach((c, k) => {
+      if (k) what.append(', ');
+      what.append(describeChange(c.name, changeOf(c)));
+    });
+    const lines = [...new Set(m.cmds.map((c) => c.src.line))];
+    li.append(el('span', 'num', `${(m.t / 1000).toFixed(1)}`), what, el('span', 'src', `line ${lines.slice(0, 3).join(', ')}${lines.length > 3 ? '…' : ''}`));
+    li.title = `At ${(m.t / 1000).toFixed(2)} s`;
+    li.addEventListener('click', () => { codeAt = i; renderSteps(); showPoint(); });
+    list.append(li);
+  });
+  const more = code.marks.length - MAX_CODE_ROWS;
+  if (more > 0) list.append(el('li', 'code-note', `… and ${more} more (all of them are in Result → Moments)`));
+}
+
+/** Shows code moment codeAt on the canvas, read-only. False when there is no such moment any more. */
+function showCodeMoment() {
+  const code = codeMoments();
+  const m = code?.marks?.[codeAt];
+  if (!m) return false;
+  showError(null);
+  $('canvas-hint').textContent = HINTS.code;
+  const { result, built } = code;
+  const view = toEditorIds(sceneAt(result.timeline, m.t), result, editor.scene, steps, built.stepAtLine);
+  const moved = new Set(m.cmds.filter((c) => c.prop === 'pos').map((c) => `${c.id} ${c.t}`));
+  const trails = tweens(result.timeline)
+    .filter((tw) => tw.prop === 'pos' && moved.has(`${tw.id} ${tw.t0}`) && (tw.from.x !== tw.to.x || tw.from.y !== tw.to.y))
+    .map((tw) => tw.path ?? [tw.from, tw.to]);
+  editor.setMode('view', view, trails);
+  syncInspector();
+  return true;
+}
+
 // ---------- 2. Behaviour: code ----------
 const scriptBox = $('script');
 scriptBox.addEventListener('keydown', (e) => {
@@ -667,8 +759,13 @@ scriptBox.addEventListener('keydown', (e) => {
   e.preventDefault();
   scriptBox.setRangeText('  ', scriptBox.selectionStart, scriptBox.selectionEnd, 'end');
 });
-scriptBox.addEventListener('input', updateRunOrder);
-const clearCode = () => { scriptBox.value = ''; updateRunOrder(); };
+let codeTimer = null;
+scriptBox.addEventListener('input', () => {
+  updateRunOrder();
+  clearTimeout(codeTimer);
+  codeTimer = setTimeout(() => { renderSteps(); if (codeAt !== null) showPoint(); }, 400);
+});
+const clearCode = () => { scriptBox.value = ''; updateRunOrder(); renderSteps(); showPoint(); };
 $('clear-code').addEventListener('click', clearCode);
 $('clear-code-note').addEventListener('click', clearCode);
 $('save-code').addEventListener('click', () => saveText(scriptBox.value, 'script.lua'));
@@ -677,6 +774,7 @@ $('example').addEventListener('change', async () => {
   $('example').value = '';
   scriptBox.value = await fetch(`/examples/${name}`).then((r) => r.text());
   updateRunOrder();
+  renderSteps();
 });
 
 function codeLines() {

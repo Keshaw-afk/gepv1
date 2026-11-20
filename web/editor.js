@@ -121,13 +121,16 @@ export class Editor {
     this.changed();
   }
 
-  /** 'stage' edits the starting picture; 'behaviour' shows `view` and turns edits into steps. The tool stays. */
+  /**
+   * 'stage' edits the starting picture; 'behaviour' shows `view` and turns edits into steps;
+   * 'view' only shows `view` (what the code does): nothing can be selected or changed. The tool stays.
+   */
   setMode(mode, view = null, trails = []) {
     this.mode = mode;
     this.view = view;
     this.trails = trails;
     this.drag = null;
-    this.setSelection(this.selectedIds()); // keeps what still exists at this point
+    this.setSelection(mode === 'view' ? [] : this.selectedIds()); // keeps what still exists at this point
   }
 
   setView(view, trails = []) {
@@ -155,7 +158,7 @@ export class Editor {
 
   /** The state on screen: the stage, or the picture after the steps. */
   state() {
-    return this.mode === 'behaviour' && this.view ? this.view : sceneToState(this.scene);
+    return this.mode !== 'stage' && this.view ? this.view : sceneToState(this.scene);
   }
 
   render() {
@@ -170,7 +173,7 @@ export class Editor {
     this.el.innerHTML = renderSVG(state, {
       interactive: true, selected: this.sel, handle: !d || d.mode === 'resize', ghost: d?.ghost, fresh: this.fresh,
       lasso: d?.mode === 'lasso' ? lassoRegion(d.path) : null, grid: this.snap, coords: this.coords,
-      trails: this.mode === 'behaviour' ? [...this.trails, ...extraTrails] : null,
+      trails: this.mode !== 'stage' ? [...this.trails, ...extraTrails] : null,
     });
   }
 
@@ -210,6 +213,7 @@ export class Editor {
   }
 
   selectAll() {
+    if (this.mode === 'view') return;
     const st = this.state();
     this.setSelection([...st.nodes.map((n) => n.id), ...st.edges.map((e) => e.id)]);
   }
@@ -254,6 +258,7 @@ export class Editor {
   }
 
   down(e) {
+    if (this.mode === 'view') return; // read-only
     const p = this.point(e);
     this.el.setPointerCapture(e.pointerId);
     const additive = e.ctrlKey || e.metaKey;
@@ -495,6 +500,7 @@ export class Editor {
 
   /** Adds a copy of the clipboard, a little down and right of the original; selects the copy. */
   paste() {
+    if (this.mode === 'view') return;
     const c = this.clipboard;
     if (!c) return;
     const off = GRID * ++c.pastes;
