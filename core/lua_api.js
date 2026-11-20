@@ -168,7 +168,7 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       const to = curve.at(-1);
       place.set(id, { from, to, t0: timeline.clockMs, dur, ease: easing, path: curve });
       Object.assign(scene.get(id), to);
-      emit({ op: 'set', id, prop: 'pos', value: to, dur, path: curve, ...(easing !== 'linear' && { ease: easing }) });
+      emit({ op: 'set', id, prop: 'pos', value: to, dur, path: curve, via: pts, ...(easing !== 'linear' && { ease: easing }) });
       return 0;
     },
     move(L) {

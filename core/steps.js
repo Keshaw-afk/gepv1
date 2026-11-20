@@ -3,9 +3,9 @@
 //
 // A step is one of
 //   { op: 'color',   target, color, dur, together }
-//   { op: 'move',    target, x, y, dur, together }
-//   { op: 'path',    target, points: [{x, y}, …], dur, together }  a curved move through the points
-//   { op: 'size',    target, size, dur, together }         size = { w, h } (or one number for both); 1 = normal
+//   { op: 'move',    target, x, y, dur, ease?, together }  ease: 'smooth' (default linear)
+//   { op: 'path',    target, points: [{x, y}, …], dur, ease?, together }  a curved move through the points
+//   { op: 'size',    target, size, dur, ease?, together }  size = { w, h } (or one number for both); 1 = normal
 //   { op: 'add',     id, shape, label, x, y, size?, together }  a new object appears
 //   { op: 'connect', id, a, b, directed, together }        a new line or arrow appears
 //   { op: 'remove',  target, together }                    an object disappears (a node takes its lines)
@@ -22,6 +22,9 @@ export const INSTANT = new Set(['add', 'connect', 'remove']);
 /** Steps that let time run on their own: nothing plays "with" them. */
 export const RUNS_TIME = new Set(['wait']);
 
+// Positions in steps are whole pixels.
+const coord = (v) => String(Math.round(v));
+const easeArg = (s) => (s.ease && s.ease !== 'linear' ? `, ${luaString(s.ease)}` : '');
 const sec = (ms) => String(Number((ms / 1000).toFixed(3)));
 const num = (v) => String(Number(v.toFixed(3)));
 
@@ -129,10 +132,10 @@ export function buildSteps(steps, scene) {
   const call = (s) => {
     switch (s.op) {
       case 'color': return `color(${ref(s.target)}, ${luaString(s.color)}, ${sec(s.dur)})`;
-      case 'move': return `move(${ref(s.target)}, ${Math.round(s.x)}, ${Math.round(s.y)}, ${sec(s.dur)})`;
-      case 'path': return `path(${ref(s.target)}, {${s.points.map((p) => `{${Math.round(p.x)}, ${Math.round(p.y)}}`).join(', ')}}, ${sec(s.dur)})`;
-      case 'size': { const z = sizeOf(s.size); return `size(${ref(s.target)}, ${num(z.w)}, ${num(z.h)}, ${sec(s.dur)})`; }
-      case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${Math.round(s.x)}, ${Math.round(s.y)}${sizeArgs(s.size ?? 1)})`;
+      case 'move': return `move(${ref(s.target)}, ${coord(s.x)}, ${coord(s.y)}, ${sec(s.dur)}${easeArg(s)})`;
+      case 'path': return `path(${ref(s.target)}, {${s.points.map((p) => `{${coord(p.x)}, ${coord(p.y)}}`).join(', ')}}, ${sec(s.dur)}${easeArg(s)})`;
+      case 'size': { const z = sizeOf(s.size); return `size(${ref(s.target)}, ${num(z.w)}, ${num(z.h)}, ${sec(s.dur)}${easeArg(s)})`; }
+      case 'add': return `${names.get(s.id)} = ${SHAPE_CALL[s.shape]}(${luaString(s.label)}, ${coord(s.x)}, ${coord(s.y)}${sizeArgs(s.size ?? 1)})`;
       case 'connect': return `${s.directed ? 'arrow' : 'edge'}(${names.get(s.a)}, ${names.get(s.b)})`;
       case 'remove': return `remove(${ref(s.target)})`;
     }
@@ -169,14 +172,8 @@ export function buildSteps(steps, scene) {
 
 export const stepsToLua = (steps, scene) => buildSteps(steps, scene).code;
 
-/**
- * Running the program numbers objects 1..n in the order it creates them, while the editor has its
- * own ids (stage ids with gaps after deletions, 's1'… for objects steps create). Returns a state
- * from sceneAt() with editor ids, so the editor can show "the picture after the steps" and still
- * know which object was clicked. Stage objects map by creation order (nodes, then edges); objects
- * from steps.lua map by the line that created them.
- */
-export function toEditorIds(state, result, scene, steps, stepAtLine) {
+/** Program ids -> editor ids for the stage objects and the objects steps.lua creates. */
+export function editorIdMap(result, scene, steps, stepAtLine) {
   const order = [...scene.nodes(), ...scene.edges()].map((o) => o.id);
   const cmds = result.timeline.commands;
   const map = new Map(cmds.slice(0, result.stageCommands).map((c, i) => [c.id, order[i]]));
@@ -185,6 +182,18 @@ export function toEditorIds(state, result, scene, steps, stepAtLine) {
     const s = steps?.[stepAtLine?.[c.src.line]];
     if (s?.id !== undefined) map.set(c.id, s.id);
   }
+  return map;
+}
+
+/**
+ * Running the program numbers objects 1..n in the order it creates them, while the editor has its
+ * own ids (stage ids with gaps after deletions, 's1'… for objects steps create). Returns a state
+ * from sceneAt() with editor ids, so the editor can show "the picture after the steps" and still
+ * know which object was clicked. Stage objects map by creation order (nodes, then edges); objects
+ * from steps.lua map by the line that created them.
+ */
+export function toEditorIds(state, result, scene, steps, stepAtLine) {
+  const map = editorIdMap(result, scene, steps, stepAtLine);
   const id = (x) => map.get(x) ?? `lua-${x}`; // objects made by script.lua aren't editable here
   return {
     nodes: state.nodes.map((n) => ({ ...n, id: id(n.id) })),

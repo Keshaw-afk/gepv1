@@ -553,6 +553,7 @@ function describeChange(name, c) {
   } else {
     what.append(c.kind ? `${c.kind} appears` : 'appears');
   }
+  if (c.ease === 'smooth') what.append(' (smooth)');
   return what;
 }
 
