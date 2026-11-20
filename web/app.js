@@ -787,7 +787,7 @@ function showCodeMoment() {
 // become ordinary steps, editable on the canvas; anything else (waits, loops, algorithms) is one code
 // keyframe, played as written. The log above the box is the keyframes as Lua, whoever made them.
 const replBox = $('repl');
-let replEditing = null; // the code keyframe being edited (its step), or null
+let replEditing = null; // the keyframe being edited (its steps), or null
 const replPast = []; let replBack = 0; // what was typed before (↑ / ↓)
 
 function replSay(text, error = false) {
@@ -809,29 +809,58 @@ function codeKeyframeError(message, built) {
 function replError(message, built, index) {
   const m = /^steps\.lua:(\d+):\s*/.exec(message);
   if (!m) return message.replace(/^script\.lua:(\d+):\s*/, 'line $1: ');
+  if (built.stepAtLine[Number(m[1])] !== index) return `An earlier keyframe fails first: ${codeKeyframeError(message, built)}`;
   const first = built.stepAtLine.indexOf(index); // the "do" line
   return `line ${Number(m[1]) - first}: ${message.slice(m[0].length)}`;
+}
+
+/**
+ * An edited keyframe that makes the same objects again (same kind and label, in order) gives them their
+ * old ids, so later keyframes that use them stay. Changes `added` in place.
+ */
+function keepIds(old, added) {
+  const was = old.filter((s) => s.op === 'add' || s.op === 'connect');
+  const map = new Map();
+  for (const s of added) {
+    if (s.op !== 'add' && s.op !== 'connect') continue;
+    const k = was.findIndex((o) => o.op === s.op && (s.op === 'add' ? o.label === s.label && o.shape === s.shape : true));
+    if (k < 0) continue;
+    map.set(s.id, was[k].id);
+    was.splice(k, 1);
+  }
+  const id = (v) => map.get(v) ?? v;
+  for (const s of added) {
+    if (s.id !== undefined) s.id = id(s.id);
+    if (s.target !== undefined) s.target = id(s.target);
+    if (s.a !== undefined) { s.a = id(s.a); s.b = id(s.b); }
+  }
 }
 
 function runEntry({ fromOldCode = false } = {}) {
   const lua = replBox.value.replace(/\s+$/, '');
   if (!lua.trim()) return false;
-  const at = replEditing ? steps.indexOf(replEditing) : point;
-  if (at < 0) { replEditing = null; return replSay('That keyframe is gone; nothing was changed.', true); }
-  const upto = steps.slice(0, at), after = steps.slice(replEditing ? at + 1 : at);
+  const old = replEditing ?? [];
+  const at = replEditing ? steps.indexOf(old[0]) : point;
+  if (at < 0 || old.some((s, i) => steps[at + i] !== s)) { replEditing = null; return replSay('That keyframe has changed since; nothing was replaced.', true); }
+  const upto = steps.slice(0, at), after = steps.slice(at + old.length);
   let added = null, scene = editor.scene;
-  try {
+  const pause = /^\s*wait\(\s*(\d+(?:\.\d+)?)\s*\)\s*;?\s*$/.exec(lua); // a pause stays a pause
+  if (pause && Number(pause[1]) > 0) added = [{ op: 'wait', dur: Math.round(Number(pause[1]) * 1000) }];
+  else try {
     const r = codeToSteps(fengari, editor.scene, upto, lua, { taken: after });
     const extra = r.steps.slice(upto.length);
     if (keyframes(extra).length <= 1 && !extra.some((s) => s.op === 'wait')) { added = extra; scene = r.scene; }
   } catch (e) {
-    if (e instanceof ScriptError) return replSay(replError(e.message), true); // anything else: a code keyframe
+    if (e instanceof ScriptError) { // the entry's own mistake, or an earlier keyframe that fails
+      return replSay(/^steps\.lua:/.test(e.message) ? `An earlier keyframe fails first: ${codeKeyframeError(e.message, buildSteps(upto, editor.scene))}` : replError(e.message), true);
+    } // anything else: a code keyframe
   }
-  if (!added) { // a code keyframe: check that it runs here
-    added = [{ op: 'code', id: nextStepId([...steps]), lua }];
+  if (!added) { // a code keyframe: check that it runs here (an edited one keeps its id, so its objects do)
+    added = [{ op: 'code', id: old[0]?.op === 'code' ? old[0].id : nextStepId([...steps]), lua }];
     const built = buildSteps([...upto, ...added], editor.scene);
     try { runProgram(fengari, { stage: toStageLua(editor.scene), steps: built.code }); } catch (e) { return replSay(replError(e.message, built, upto.length), true); }
   }
+  keepIds(old, added);
   replPast.push(lua);
   replBack = replPast.length;
   editor.scene = scene;
@@ -875,18 +904,18 @@ function renderRepl() {
   let built;
   try { built = buildSteps(steps, editor.scene); } catch { return; }
   const lines = built.code.split('\n');
-  const item = (title, code, k, { current, step } = {}) => {
-    const li = el('li', `repl-item${current ? ' current' : ''}${step?.op === 'code' ? ' code' : ''}${replEditing && step === replEditing ? ' editing' : ''}`);
+  const item = (title, code, k, { current, step, group } = {}) => {
+    const li = el('li', `repl-item${current ? ' current' : ''}${step?.op === 'code' ? ' code' : ''}${replEditing && step === replEditing[0] ? ' editing' : ''}`);
     const head = el('div', 'repl-head');
     head.append(el('b', null, title));
-    if (step?.op === 'code') {
+    if (group) {
       const edit = el('button', 'repl-edit', 'Edit');
       edit.type = 'button';
-      edit.title = 'Put this code in the box; Enter replaces the keyframe';
+      edit.title = 'Put this in the box; Enter replaces the keyframe';
       edit.addEventListener('click', (e) => {
         e.stopPropagation();
-        replEditing = step;
-        replBox.value = step.lua;
+        replEditing = group;
+        replBox.value = code;
         replSay('Editing this keyframe: Enter replaces it, Esc leaves it as it is.');
         replBox.focus();
         renderRepl();
@@ -905,7 +934,7 @@ function renderRepl() {
     const code = first.op === 'code' ? first.lua
       : lines.filter((_, i) => { const j = built.stepAtLine[i + 1]; return j >= f.start && j < f.end; }).join('\n');
     const title = first.op === 'wait' ? 'Pause' : `Keyframe ${++n}${first.op === 'code' ? ' · code' : ''}`;
-    item(title, code, f.end, { current: point === f.end && codeAt === null, step: first });
+    item(title, code, f.end, { current: point === f.end && codeAt === null, step: first, group: steps.slice(f.start, f.end) });
   }
   const cur = log.querySelector('.current'); // scroll the log only, not the page
   if (cur && (cur.offsetTop < log.scrollTop || cur.offsetTop + cur.offsetHeight > log.scrollTop + log.clientHeight)) log.scrollTop = cur.offsetTop - 8;

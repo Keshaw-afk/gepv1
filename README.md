@@ -46,7 +46,9 @@ The page has two tabs: **Build → Result**.
      are shown as Lua, whether you made them by typing or on the canvas; click one to work there.
      Changes that all start together become ordinary keyframes you can also change on the canvas.
      Anything else (waits, loops, algorithms such as DFS from **Example…**) is one **code keyframe**,
-     played as written; **Edit** puts it back in the box. Objects a code keyframe makes are changed
+     played as written. **Edit** on any keyframe or pause puts its Lua back in the box, and Enter
+     replaces it there (objects it makes again keep their identity, so later keyframes that use them
+     stay). Objects a code keyframe makes are changed
      only in code, and `local` variables don't carry over to the next entry (globals do).
    - Code from before the REPL still plays after all keyframes; **Make it the last keyframe** turns it
      into a code keyframe.
