@@ -11,9 +11,19 @@ for how it works and [TODO.md](TODO.md) for what's left. Last updated 2026-11-17
 > through the in-app ✦ Assistant (`web/assistant.js`, any OpenAI-compatible API with the user's key). The tools
 > run in the open app tab via the server's live link, so every keyframe is editable afterwards. **The tools must
 > stay very easy for a simple AI** (labels not ids, optional positions, forgiving arguments, replies that say what
-> to do next). See ARCHITECTURE §3b. Tried with qwen3:0.6b in Ollama: the tools work, but a 0.6B model can't
-> plan a bubble sort (it makes new rows); a stronger model or a `bubble_sort` plugin would fix that. The
-> Fabric.js + Matter.js rebuild plan was dropped.
+> to do next). See ARCHITECTURE §3b. The Fabric.js + Matter.js rebuild plan was dropped.
+> **AI round 2 (2026-11-20).** The user's philosophy: **very small, cheap models**, and users who describe what
+> they want **step by step in plain words**, pointing at an object or a set of objects ("make these red").
+> So the tools became one per everyday verb (`draw`, `move`, `color`, …) with no keyframe bookkeeping
+> (`next_keyframe` is gone: actions are sequential, `together` for "at the same time", `seconds` on the
+> action), sets as targets (incl. the Stage selection), and the assistant gives the model **one instruction
+> at a time** while the user's own words override its guesses (`core/instructions.js`, `core/ai_loop.js`).
+> Measured with `node tools/ai_eval.mjs` on qwen3:0.6b, 26 prompts in four batches; each new batch was
+> written before tuning on it. Each batch's first, untuned run: round-1-style tools 4/8 → one
+> instruction at a time 5/8 → words win 8/8 (tuned); then 3/6 held out, 3/6 fresh, **4/6 new** (the
+> latest honest figure). After fixing what those showed, all 26 pass (2026-11-20). The remaining risk
+> is phrasing nobody has tried yet: grow the eval with the user's real instructions, new prompts first.
+> Plugins were only ported (the user will talk about plugins later).
 > **v2.0.0 (the round after v1.1.0).** At the user's request:
 > **removed** `tree_layout`, `push`, `simulate`, rules (spread/fall/drift/towards), the Push tool, Tidy tree,
 > Let it move and the rotation/untangle/rules examples (`core/layout.js`, `core/motion.js`, their tests and
@@ -151,7 +161,8 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 74 unit/integration tests (engine, steps, SVG, CLI, MP4) | all pass |
+| `npm test` | 80 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop) | all pass |
+| `node tools/ai_eval.mjs` | small-model eval: step-by-step prompts through the assistant's loop (Ollama qwen3:0.6b) | see the AI round 2 note |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
 | `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 6 cases (dfs, network, edge, sizes, curves, stretch) | open in Chrome: title says `20337 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |
 

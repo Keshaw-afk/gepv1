@@ -59,14 +59,24 @@ centre (factors 0.25 to 5; `size(id, 2)` = both ×2; `rect("A", x, y, 3, 1)` sta
 ## Use it with an AI
 
 GEPV1 is aimed at **academic animations** (diagrams of circles, boxes, triangles, text, lines and
-arrows). An AI can build them with a small set of tools; what it makes is ordinary Start + keyframes,
-so you can click any keyframe and edit it.
+arrows). You say what you want step by step, in plain words, and an AI (even a very small, cheap
+one) carries it out with a small set of tools. What it makes is ordinary Start + keyframes, so you
+can click any keyframe and edit it.
 
-- **Tools:** `start_over`, `add`, `connect`, `next_keyframe`, `move` (with `via` for a curve), `change`,
-  `remove`, `pause`, `show`. Objects are named by their labels. Positions are optional, and every
-  reply says what changed and what to do next.
-- **Plugins** do the diagram thinking in one call: `make_row` (arrays), `make_tree`, `make_graph`,
-  `swap` (two boxes trade places in arcs), `throw` (a projectile arc).
+> Draw a circle A at (100, 180) and a box B at (400, 180). Move A to (300, 80) in 3 seconds and at
+> the same time turn B red. Then wait 1 second. Make these green, then move them down by 50.
+
+- **Tools**, one per everyday verb: `draw`, `write`, `move`, `color`, `resize`, `connect`, `remove`,
+  `rename`, `wait`, `undo`, `clear`, `show`.
+  - Each action happens after the previous one; "at the same time" plays it together with the
+    previous one. Time goes on the action ("in 3 seconds"), up to 60 s.
+  - Point at what to change: a label ("A"), several ("A, B and C"), "all circles", "the red ones",
+    "everything", "it" / "them" (the last ones), or **"these"** for what you selected on the Stage.
+  - "Move it right by 100", "in an arc", "twice as big" work as you'd expect.
+- **The assistant splits your message into single instructions** and gives the model one at a time.
+  The words you typed win over the model's guesses (times, distances, "at the same time", colours,
+  labels), so a 0.6B model gets most simple instructions right. `node tools/ai_eval.mjs` measures it.
+- **Plugins** (`make_row`, `make_tree`, `make_graph`, `swap`, `throw`) do a whole diagram in one call.
 - **Over MCP** (Claude Code, Claude Desktop, any MCP client):
   `claude mcp add gepv1 -- node /path/to/gepv1/node/mcp.js`. It starts the app server if needed and
   opens the app in your browser; you watch the AI build the animation there.

@@ -21,8 +21,11 @@ claude mcp add gepv1 -- node $PWD/node/mcp.js   # the AI tools over MCP (core/ai
 ## Rules of the house
 
 - The GUI only generates plain Lua API calls (`stage.lua`, `steps.lua`); never a separate format.
-- AI tools stay very easy for a simple AI: labels not ids, optional args, replies that say what to do
-  next, errors that say how to fix the call. Plugins are built only from the core tools.
+- AI tools are for very small models and plain step-by-step instructions: one tool per everyday verb,
+  no modes (sequential, `together`), labels or sets ("these", "all circles") not ids, forgiving args,
+  errors that say how to fix the call. What the user typed wins over the model's guesses
+  (`core/instructions.js`). Check changes with `node tools/ai_eval.mjs` (write new prompts before
+  tuning; report the fresh score). Plugins are built only from the core tools.
 - Restart `npm start` after changing `core/` or `node/`: the server keeps the modules it loaded.
 - New API function → add it to `API_NAMES` in `core/lua_api.js`, the ARCHITECTURE API list and the
   API hint in `web/index.html`.

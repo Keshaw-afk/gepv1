@@ -15,14 +15,13 @@ test('the plugins are registered next to the core tools', () => {
   for (const name of ['make_row', 'make_tree', 'make_graph', 'swap', 'throw']) assert.ok(TOOLS.some((t) => t.name === name), name);
 });
 
-test('bubble sort of a row: one swap per keyframe, the boxes really trade places', () => {
+test('bubble sort of a row: swaps happen one after another, the boxes really trade places', () => {
   const p = newProject();
   const r = runTool(p, 'make_row', { values: [3, 1, 3, 2] });
   assert.match(r, /Made a row of 4 boxes: 3, 1, 3′, 2/);
   const xs = ['3', '1', '3′', '2'].map((l) => at(p, l).x);
   assert.ok(xs[0] < xs[1] && xs[1] < xs[2] && xs[2] < xs[3]);
-  runTool(p, 'swap', { a: '3', b: '1' }); // starts keyframe 1 by itself
-  runTool(p, 'next_keyframe', {});
+  runTool(p, 'swap', { a: '3', b: '1' });
   runTool(p, 'swap', { a: "3'", b: '2' });
   assert.equal(keyframes(p.steps).length, 2);
   assert.deepEqual(['1', '3', '2', '3′'].map((l) => at(p, l).x), xs, 'each swap trades the places');
@@ -54,8 +53,8 @@ test('a tree is laid out by levels with parents over their children; a graph sit
 
 test('throw: a parabola through the top, landing exactly; it runs in the engine', () => {
   const p = newProject();
-  runTool(p, 'add', { shape: 'circle', label: 'ball', x: 60, y: 300 });
-  runTool(p, 'add', { shape: 'box', label: 'wall', x: 320, y: 280, height: 160, width: 20 });
+  runTool(p, 'draw', { shape: 'circle', label: 'ball', x: 60, y: 300 });
+  runTool(p, 'draw', { shape: 'box', label: 'wall', x: 320, y: 280, height: 160, width: 20 });
   runTool(p, 'throw', { label: 'ball', x: 560, y: 300, height: 200 });
   const s = p.steps[0];
   assert.equal(s.op, 'path');
@@ -65,17 +64,22 @@ test('throw: a parabola through the top, landing exactly; it runs in the engine'
   const tl = run(p);
   const end = sceneAt(tl, tl.durationMs).nodes.find((n) => n.label === 'ball');
   assert.deepEqual([end.x, end.y], [560, 300]);
-  assert.match(describeProject(p), /Keyframe 1 \(1 s\): ball moves along a curve to \(560, 300\)/);
+  assert.match(describeProject(p), /0–1 s: ball moves along a curve to \(560, 300\)/);
   assert.throws(() => runTool(p, 'throw', { label: 'nope', x: 1, y: 1 }), (e) => e instanceof ToolError && /No object called "nope"/.test(e.message));
 });
 
-test('forgiving plugins: a second row goes on a free line; swapping a box twice in a keyframe makes a new one', () => {
+test('forgiving plugins: a second row goes on a free line; two swaps play one after the other; one undo per plugin call', () => {
   const p = newProject();
   runTool(p, 'make_row', { values: [5, 2] });
   runTool(p, 'make_row', { values: [2, 5] });
   const ys = [...endState(p).values()].map((o) => o.y);
   assert.deepEqual(ys, [180, 180, 260, 260]);
   runTool(p, 'swap', { a: '5', b: '2' });
-  assert.match(runTool(p, 'swap', { a: '2', b: '5' }), /already moving in the last keyframe, so this swap got a new keyframe/);
+  assert.equal(runTool(p, 'swap', { a: '2', b: '5' }), '2 and 5 swap places.');
   assert.equal(keyframes(p.steps).length, 2);
+  runTool(p, 'undo');
+  assert.equal(keyframes(p.steps).length, 1, 'undo takes back the whole swap');
+  runTool(p, 'undo');
+  runTool(p, 'undo');
+  assert.equal(p.scene.nodes().length, 2, 'and the whole second row');
 });

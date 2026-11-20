@@ -164,18 +164,40 @@ it is no change in the timeline, no moment and no trace line.
 GEPV1's aim is **academic animations built by an AI** through a procedure we provide. The AI never writes
 Lua; it calls tools that write the same scene + keyframe steps as the GUI, so the result is editable.
 
-- `core/ai_tools.js`: the 9 core tools (`TOOLS`), `runTool(project, name, args)`, `describeProject`,
-  `RECIPE` (the whole manual, used as MCP instructions and the assistant's system prompt).
-  - A project is `{ scene, steps, cursor, seconds }`. `cursor` is `'start'` (building the starting
-    picture), `'new'` (the next change begins a keyframe) or `'in'` (changes join the last keyframe).
-    Changes go through `recordSteps`.
-  - It is made for a simple AI:
-    - objects are named by label (case-insensitive, `'` matches `′`; a line is "A-B");
-    - x/y are optional (a free grid spot);
-    - arguments are forgiving (numbers as strings, JSON strings, "square", "light grey");
-    - `add` with a label that exists changes that object instead (`duplicate: true` really adds one);
-    - repeated labels get primes (3, 3′);
-    - replies say what changed and what to do next; errors (`ToolError`) say how to fix the call.
+The user types plain step-by-step instructions and the AI may be very small (qwen3 0.6B), so the
+model's job is kept to "pick the verb and the object"; everything else is done in code.
+
+- `core/ai_tools.js`: the 12 tools (`TOOLS`): `draw`, `write`, `move`, `color`, `resize`, `connect`,
+  `remove`, `rename`, `wait`, `undo`, `clear`, `show`. Also `runTool(project, name, args)`,
+  `describeProject`, `briefState` (one line of what exists), `findMany`, and `RECIPE` (rules plus
+  sentence → call examples; the MCP instructions and the system prompt).
+  - A project is `{ scene, steps, last, selected, fresh, history }`.
+  - **No modes.** Each call happens after the previous one (a keyframe of its own); `together: true`
+    joins the previous keyframe; instant changes (appear, connect, disappear) join a run of instant
+    ones. Before anything has happened, drawing builds the starting picture. `seconds` is on the
+    action (0.1–60; an explicit `dur` is kept inside a joined keyframe). Changes go through `recordSteps`.
+  - **Pointing:** `label` may be a name, a list, "A, B and C", "all circles", "the red ones",
+    "everything", "it"/"them" (`last`), "selected"/"these" (`selected`, the Stage selection). A set
+    changes together; a moved set keeps its arrangement. Unnamed shapes are "circle 1", "box 2"…
+    (stable: counted over everything ever made); "the circle" works when there is one.
+  - Colour, size or removal of a shape the AI **just drew** (`fresh`, starting picture only) describes
+    the starting picture; for anything already there it is something that happens (animated).
+  - `move` takes x/y (to) or right/left/up/down (by), `arc` (true or px), `via` points.
+  - Forgiving arguments (numbers as text, "square", "light grey", aliases such as add→draw,
+    delete→remove); errors (`ToolError`) say how to fix the call; replies give the times
+    ("from 0 to 3 s"). `undo` uses `history`; a plugin's own calls make one undo step.
+- `core/instructions.js`: `splitInstructions` (sentences, ";", "then", "and at the same time", "and
+  draw…"; never inside brackets or at a bare "and"); `fromWords(step, tool, args, names)`: the
+  user's words override the model's guesses: together only when said, seconds as said, "by 100 to
+  the right", "these"/"them"/"everything"/"the boxes", the colour said last, the object named,
+  and for `draw` the shape, label, colour and place typed (never an invented label);
+  `obviousCall` for simple instructions a model won't call ("hide it", "wait 2 seconds").
+- `core/ai_loop.js`: `carryOut(message, {ask, run, brief, names, on, stopped})`. One instruction at a
+  time, each in a fresh short conversation (system prompt + what exists + the instruction). A failed
+  call goes back with its error (2 retries); a working call ends the instruction (so the model can't
+  add steps), unless it names more places "(x, y)" than were drawn. Repeated identical calls are dropped.
+- `tools/ai_eval.mjs`: runs prompts in the user's style through `carryOut` against a model (default
+  qwen3:0.6b on Ollama) and checks the end state and timing; three sets (tuned on, held out, fresh).
 - `core/plugins/`: `make_row`, `make_tree`, `make_graph`, `swap`, `throw`. Each one is built only from
   the core tools (`runTool`), and importing `core/plugins/index.js` registers them.
 - **Live link** (`node/server.js`): the open tab owns the project.
@@ -189,11 +211,15 @@ Lua; it calls tools that write the same scene + keyframe steps as the GUI, so th
 - `node/mcp.js`: the MCP server (stdio, `@modelcontextprotocol/sdk`). It lists `TOOLS` with plain JSON
   schemas, uses `RECIPE` as its instructions, forwards calls to `/api/tool`, and starts the app server
   (detached) if nothing answers.
-- `web/assistant.js`: the in-app chat. It speaks the OpenAI chat API with the same tools through
-  `POST /api/llm` (relayed by the server). Settings are kept in localStorage `gepv1.assistant`.
+- `web/assistant.js`: the in-app chat: `carryOut` with the OpenAI chat API through `POST /api/llm`
+  (relayed by the server), running tools with `runAiTool` (web/app.js keeps `last`, `fresh` and
+  `history` between calls until the user edits by hand, and passes the Stage selection). Settings
+  are kept in localStorage `gepv1.assistant`.
   - For local servers (localhost) it sends `reasoning_effort: "none"`: small models are far faster and
     call tools reliably without reasoning first.
-  - If the model describes a plan without calling a tool, it gets one nudge.
+  - Instructions that got no working call are listed at the end ("Not done: …").
+- The Build list shows one duration per keyframe; when its changes last different times (an AI's
+  `together` with its own seconds), each timed change gets its own field.
 
 ## 4. Components
 

@@ -15,7 +15,7 @@ import { formatTrace } from '../core/trace.js';
 import { outputSettings } from '../core/output.js';
 import { frameAt, landmarks, renderFrame, frameName } from '../core/frames.js';
 import { Editor } from './editor.js';
-import { runTool } from '../core/ai_tools.js';
+import { runTool, briefState, objectNames } from '../core/ai_tools.js';
 import '../core/plugins/index.js'; // registers the plugin tools
 import { setupAssistant } from './assistant.js';
 import { History } from './history.js';
@@ -338,7 +338,9 @@ $('clear').addEventListener('click', () => loadStage(''));
 $('new').addEventListener('click', () => {
   steps = [];
   point = 0;
-  aiCursor = 'start';
+  aiLast = [];
+  aiFresh = [];
+  aiHistory = [];
   scriptBox.value = '';
   loadStage('');
   stepsChanged();
@@ -362,12 +364,12 @@ for (const c of PALETTE) {
   $('palette').append(b);
 }
 
-// A duration typed into a field, in ms: 0.1 to 10 s, the default 0.5 s when empty or not a number.
+// A duration typed into a field, in ms: 0.1 to 60 s, the default 0.5 s when empty or not a number.
 // (A change that takes 0 s can't be seen happening: a curved move would just jump to its end.)
-const MIN_DUR = 100;
+const MIN_DUR = 100, MAX_DUR = 60;
 function seconds(text) {
   const v = String(text).trim() === '' ? NaN : Number(text);
-  return Math.round(Math.min(10, Math.max(MIN_DUR / 1000, Number.isFinite(v) ? v : 0.5)) * 1000);
+  return Math.round(Math.min(MAX_DUR, Math.max(MIN_DUR / 1000, Number.isFinite(v) ? v : 0.5)) * 1000);
 }
 function stepDur() {
   return seconds($('dur').value);
@@ -536,7 +538,7 @@ function renderSteps() {
   };
   const durField = (value, set) => {
     const dur = el('input');
-    Object.assign(dur, { type: 'number', min: MIN_DUR / 1000, max: 10, step: 0.1, value: value / 1000, title: 'seconds' });
+    Object.assign(dur, { type: 'number', min: MIN_DUR / 1000, max: MAX_DUR, step: 0.1, value: value / 1000, title: 'seconds' });
     dur.setAttribute('aria-label', 'duration in seconds');
     dur.addEventListener('change', () => {
       set(seconds(dur.value));
@@ -591,7 +593,10 @@ function renderSteps() {
       w.append(el('b', null, `Keyframe ${n}`));
       if (recording() && here && !newKeyframe) w.append(el('span', 'rec', ' ● recording'));
       head.append(el('span', 'num', String(n)), w);
-      if (timed.length) {
+      // one duration for the keyframe; when its changes last different times (an AI can make that),
+      // each timed change gets its own field instead, so editing one doesn't flatten the others
+      const mixed = new Set(timed.map((s) => s.dur)).size > 1;
+      if (timed.length && !mixed) {
         const opts = el('div', 'opts');
         opts.append(durField(Math.max(...timed.map((s) => s.dur)), (v) => { for (const s of timed) s.dur = v; }));
         head.append(opts);
@@ -601,6 +606,11 @@ function renderSteps() {
       group.forEach((s, k) => {
         const li = el('li', `change${here ? ' in-current' : ''}`);
         li.append(el('span', 'num', ''), describe(s, names), removeButton(f.start + k));
+        if (mixed && !INSTANT.has(s.op)) {
+          const opts = el('div', 'opts');
+          opts.append(durField(s.dur, (v) => { s.dur = v; }));
+          li.append(opts);
+        }
         pick(li, f.end);
         if (justAdded.has(s)) li.classList.add('new');
         list.append(li);
@@ -1020,25 +1030,34 @@ updateHistoryButtons();
 window.addEventListener('pagehide', () => history.commit());
 
 // ---------- AI: tools sent by the server (node/mcp.js) run here, on the live project ----------
-// The AI works at the end of the steps, like Record mode: before its first next_keyframe it builds the
-// starting picture, after it its changes join the current keyframe. Each call is one undo step.
-let aiCursor = steps.length ? 'in' : 'start';
-let aiSeconds = 1;
+// The AI works at the end of the steps: one action after another (together = at the same time), and
+// what it draws before anything happens is the starting picture. "it"/"them" (aiLast) and its own
+// undo (aiHistory) last between calls, until the user changes something by hand. "selected"/"these"
+// are the objects selected on the Stage. Each call is also one step of the app's undo.
+let aiLast = [], aiFresh = [], aiHistory = [], aiSeen = null;
 let aiNoteTimer = null;
 
 /** Runs one AI tool here. Returns { text } or { error }, plus { svg } (the end picture) for show. */
+const aiNow = () => JSON.stringify([editor.scene.toJSON(), steps]);
+/** The live project as the AI tools see it. */
+function aiProject() {
+  if (aiSeen !== aiNow()) { aiLast = []; aiFresh = []; aiHistory = []; } // changed by hand since: start afresh
+  return { scene: editor.scene, steps, last: aiLast, fresh: aiFresh, selected: editor.selectedIds(), history: aiHistory };
+}
+
 export function runAiTool(name, args) {
   if (tab !== 'build') showTab('build');
-  if (!steps.length && aiCursor === 'in') aiCursor = 'start'; // the steps were cleared by hand
-  const project = { scene: editor.scene, steps, cursor: aiCursor, seconds: aiSeconds };
+  const project = aiProject();
   try {
     const text = runTool(project, name, args);
-    aiCursor = project.cursor;
-    aiSeconds = project.seconds;
+    aiLast = project.last;
+    aiFresh = project.fresh;
+    aiHistory = project.history;
     steps = project.steps;
     point = steps.length; // show where the AI is
-    if (project.scene !== editor.scene) editor.setScene(project.scene); // start_over
+    if (project.scene !== editor.scene) editor.setScene(project.scene); // clear, undo
     everythingChanged();
+    aiSeen = aiNow();
     noteAi(name, args);
     if (name !== 'show') return { text };
     return { text, svg: endPicture() };
@@ -1065,7 +1084,7 @@ function noteAi(name, args) {
   aiNoteTimer = setTimeout(() => { note.hidden = true; }, 4000);
 }
 
-setupAssistant({ runTool: runAiTool });
+setupAssistant({ runTool: runAiTool, brief: () => briefState(aiProject()), names: () => objectNames(aiProject()) });
 
 if (typeof EventSource === 'function') {
   const live = new EventSource('/api/live');

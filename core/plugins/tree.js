@@ -40,7 +40,7 @@ export default {
     const name = new Map();
     for (const x of order) {
       const { col, d } = at.get(x);
-      const reply = runTool(p, 'add', { shape: 'circle', label: x, x: Math.round(x0 + col * colW), y: Math.round(40 + d * rowH), duplicate: true });
+      const reply = runTool(p, 'draw', { shape: 'circle', label: x, x: Math.round(x0 + col * colW), y: Math.round(40 + d * rowH), duplicate: true });
       name.set(x, / so it is called (.+?)\)/.exec(reply)?.[1] ?? x);
     }
     for (const [pa, ch] of pairs) runTool(p, 'connect', { from: name.get(pa), to: name.get(ch), arrow: !!a.arrows });

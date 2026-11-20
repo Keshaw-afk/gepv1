@@ -89,7 +89,7 @@
           </div>
           <div class="toolbar"><span class="arrange" data-arrange></span></div>
           <div class="toolbar">
-            <label>Duration <input id="dur" type="number" min="0.1" max="10" step="0.1" value="0.5"> s</label>
+            <label>Duration <input id="dur" type="number" min="0.1" max="60" step="0.1" value="0.5"> s</label>
             <button id="pause" type="button">+ Pause</button>
             <button id="next-key" type="button" title="Start a new keyframe: the next changes play after this one (N)">Next keyframe ▸</button>
           </div>
@@ -118,7 +118,7 @@
           <p class="hint">Describe an animation; the AI builds it as keyframes you can edit. It uses your own API key.</p>
           <ol id="chat" class="chat" aria-live="polite"></ol>
           <form id="ask" class="ask">
-            <textarea id="prompt" rows="3" placeholder="e.g. Show bubble sort on 5, 2, 8, 1" aria-label="what to animate"></textarea>
+            <textarea id="prompt" rows="3" placeholder="e.g. Draw a circle A at (100, 180). Move it to (500, 180) in 3 seconds, then turn it red." aria-label="what to do, step by step"></textarea>
             <div class="toolbar">
               <button id="send" type="submit" class="primary">Send</button>
               <button id="stop" type="button" hidden>Stop</button>

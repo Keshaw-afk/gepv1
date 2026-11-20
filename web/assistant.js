@@ -1,20 +1,19 @@
-// The in-app assistant: you describe an animation, an AI builds it with the same tools as the MCP
-// server (core/ai_tools.js + plugins), run on the live project. It talks to any OpenAI-compatible
+// The in-app assistant: you describe an animation step by step and a (small, cheap) AI carries it out
+// with the same tools as the MCP server, on the live project. The message is split into single
+// instructions and the model gets one at a time (core/ai_loop.js). It talks to any OpenAI-compatible
 // chat API (OpenAI, OpenRouter, Ollama, LM Studio) through the local server (/api/llm), with the
 // user's own key, which is kept in this browser's localStorage only.
 
-import { TOOLS } from '../core/plugins/index.js';
-import { schemaOf, RECIPE } from '../core/ai_tools.js';
+import { carryOut, TOOL_SCHEMAS } from '../core/ai_loop.js';
 
 const SETTINGS_KEY = 'gepv1.assistant';
-const MAX_ROUNDS = 40; // tool rounds per request: plenty for a short animation, stops a loop
-const SYSTEM = `${RECIPE}
-Always use the tools to build the animation; do not answer with code. When you are done, say in one or two sentences what the animation shows.`;
-
 const $ = (id) => document.getElementById(id);
 
-/** runTool(name, args) -> { text } | { error } runs a tool on the app's project. */
-export function setupAssistant({ runTool }) {
+/**
+ * runTool(name, args) -> { text } | { error } runs a tool on the app's project; brief() says what
+ * exists now; names() lists the objects' names.
+ */
+export function setupAssistant({ runTool, brief, names }) {
   const fields = { baseUrl: $('ai-base'), model: $('ai-model'), apiKey: $('ai-key') };
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}'); } catch { /* private window */ }
@@ -31,8 +30,7 @@ export function setupAssistant({ runTool }) {
   });
   if (!saved.baseUrl && !saved.apiKey) $('ai-settings').open = true; // first time: show where the key goes
 
-  const tools = TOOLS.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: schemaOf(t) } }));
-  let messages = [{ role: 'system', content: SYSTEM }];
+  const tools = TOOL_SCHEMAS();
   let busy = false, stopped = false;
 
   const say = (cls, text) => {
@@ -44,7 +42,11 @@ export function setupAssistant({ runTool }) {
     return li;
   };
 
-  async function ask(body) {
+  async function ask(messages) {
+    // a small local model (Ollama, LM Studio) is much faster and more reliable with tools when it
+    // doesn't reason first; hosted APIs reject this setting on models that don't reason
+    const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\//.test(settings().baseUrl + '/');
+    const body = { model: settings().model, messages, tools, tool_choice: 'auto', temperature: 0, ...(local && { reasoning_effort: 'none' }) };
     const res = await fetch('/api/llm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,40 +63,27 @@ export function setupAssistant({ runTool }) {
     $('send').disabled = true;
     $('stop').hidden = false;
     say('you', text);
-    messages.push({ role: 'user', content: text });
-    const thinking = say('thinking', 'Thinking…');
-    let usedTools = false, nudged = false;
+    const thinking = say('thinking', 'Working…');
     try {
-      for (let round = 0; round < MAX_ROUNDS && !stopped; round++) {
-        // a small local model (Ollama, LM Studio) is much faster and more reliable with tools when it
-        // doesn't reason first; hosted APIs reject this setting on models that don't reason
-        const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\//.test(settings().baseUrl + '/');
-        const msg = await ask({ model: settings().model, messages, tools, tool_choice: 'auto', ...(local && { reasoning_effort: 'none' }) });
-        // keep only what the API needs back (some providers add extra fields)
-        messages.push({ role: 'assistant', content: msg.content ?? '', ...(msg.tool_calls?.length && { tool_calls: msg.tool_calls }) });
-        if (!msg.tool_calls?.length) {
-          const words = String(msg.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim(); // reasoning models
-          // a small model sometimes describes a plan instead of doing it: nudge it once
-          if (!usedTools && !nudged) {
-            nudged = true;
-            messages.push({ role: 'user', content: 'Now build it: call the tools (start with start_over), do not describe it.' });
-            continue;
+      const { failed } = await carryOut(text, {
+        ask,
+        run: runTool,
+        brief,
+        names,
+        stopped: () => stopped,
+        on(e) {
+          if (e.type === 'step') thinking.textContent = e.count > 1 ? `Step ${e.index + 1} of ${e.count}: ${e.step}` : 'Working…';
+          if (e.type === 'call') {
+            const line = say(e.error ? 'tool failed' : 'tool', `${e.error ? '✗' : '✓'} ${e.error ? `${e.name}: ${e.error}` : e.text.split('. ')[0]}`);
+            line.title = `${e.step}\n${e.name} ${JSON.stringify(e.args)}`;
+            thinking.after(line); // keep "Working…" last
+            $('chat').append(thinking);
           }
-          if (words) say('ai', words);
-          break;
-        }
-        usedTools = true;
-        for (const call of msg.tool_calls) {
-          let args = call.function.arguments;
-          try { args = typeof args === 'string' ? JSON.parse(args || '{}') : args ?? {}; } catch { /* the tool reports bad JSON */ }
-          const r = runTool(call.function.name, args);
-          const line = say(r.error ? 'tool failed' : 'tool', `${r.error ? '✗' : '✓'} ${call.function.name}${args?.label ? ` ${args.label}` : ''}: ${r.error ?? r.text.split('. ')[0]}`);
-          line.title = r.error ?? r.text;
-          messages.push({ role: 'tool', tool_call_id: call.id, content: r.error ? `Error: ${r.error}` : r.text });
-        }
-        if (round === MAX_ROUNDS - 1) say('ai', `Stopped after ${MAX_ROUNDS} rounds of tool calls.`);
-      }
+          if (e.type === 'say') say('ai', e.text);
+        },
+      });
       if (stopped) say('ai', 'Stopped.');
+      else if (failed.length) say('error', `Not done: ${failed.map((f) => `“${f}”`).join(', ')}. Try saying it more simply, or do it by hand.`);
     } catch (e) {
       say('error', e.message);
     } finally {
@@ -118,7 +107,6 @@ export function setupAssistant({ runTool }) {
   $('stop').addEventListener('click', () => { stopped = true; });
   $('new-chat').addEventListener('click', () => {
     if (busy) return;
-    messages = [{ role: 'system', content: SYSTEM }];
     $('chat').replaceChildren();
   });
 }

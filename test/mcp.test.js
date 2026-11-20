@@ -21,22 +21,21 @@ async function connect() {
 test('MCP: the tools and the recipe are offered, with simple schemas', async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name), ['start_over', 'add', 'connect', 'next_keyframe', 'move', 'change', 'remove', 'pause', 'show', 'make_row', 'make_tree', 'make_graph', 'swap', 'throw']);
-  const add = tools.find((t) => t.name === 'add');
-  assert.deepEqual(add.inputSchema.required, ['shape', 'label']);
-  assert.deepEqual(add.inputSchema.properties.shape.enum, ['circle', 'box', 'triangle', 'text']);
-  assert.match(client.getInstructions(), /1\. start_over\./);
+  assert.deepEqual(tools.map((t) => t.name), ['draw', 'write', 'move', 'color', 'resize', 'connect', 'remove', 'rename', 'wait', 'undo', 'clear', 'show', 'make_row', 'make_tree', 'make_graph', 'swap', 'throw']);
+  const draw = tools.find((t) => t.name === 'draw');
+  assert.deepEqual(draw.inputSchema.required, ['shape']);
+  assert.equal(tools.find((t) => t.name === 'move').inputSchema.required, undefined, 'no label needed: it means the last object');
+  assert.match(client.getInstructions(), /one tool call per instruction/);
 });
 
 test('MCP: a short session builds keyframes; mistakes come back as errors the AI can read', async () => {
   const { client, project } = await connect();
   const text = async (name, args) => (await client.callTool({ name, arguments: args })).content[0].text;
-  await text('add', { shape: 'circle', label: 'A', x: 100, y: 180 });
-  await text('next_keyframe', {});
-  assert.match(await text('move', { label: 'A', x: 500, y: 180 }), /A moves from \(100, 180\) to \(500, 180\) in keyframe 1/);
+  await text('draw', { shape: 'circle', label: 'A', x: 100, y: 180 });
+  assert.equal(await text('move', { x: 500, seconds: 3 }), 'A moves from (100, 180) to (500, 180) from 0 to 3 s.');
   const bad = await client.callTool({ name: 'move', arguments: { label: 'B', x: 1, y: 1 } });
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /No object called "B"\. Objects: A\./);
-  assert.match(await text('show', {}), /Keyframe 1 \(1 s\): A moves to \(500, 180\)/);
+  assert.match(await text('show', {}), /0–3 s: A moves to \(500, 180\)/);
   assert.equal(project.steps.length, 1);
 });

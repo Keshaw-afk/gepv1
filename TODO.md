@@ -8,8 +8,13 @@ Usability work is judged by how well it serves those three.
 - [x] Keyframe tools for a simple AI (`core/ai_tools.js`), plugins (row, tree, graph, swap, throw).
 - [x] Live link: tools run in the open app tab; `show` returns a picture.
 - [x] MCP server (`node/mcp.js`); in-app ✦ Assistant (OpenAI-compatible, user's key).
-- [ ] More plugins that do the whole thinking: `bubble_sort(values)`, `bfs(graph, start)`, `dfs`, `stack`/`queue`.
+- [x] Round 2 (2026-11-20): verb tools for step-by-step instructions, sets and the Stage selection,
+      one instruction at a time with the user's words winning (`core/instructions.js`, `core/ai_loop.js`),
+      `tools/ai_eval.mjs`.
+- [ ] Plugins: the user will say what they should be (today: ported as they were).
+- [ ] Grow the eval with real instructions from the user; fix what fails (new prompts first, then tune).
 - [ ] Let the AI edit an earlier keyframe (today it always works at the end).
+- [ ] Maybe: rotate and fade verbs ("spin it", "fade it out") if users ask for them.
 - [ ] Try the assistant with stronger models (the user's key); tune the recipe from what goes wrong.
 
 ## Done in v2.0.0: Build tab, lasso, size and editing comforts

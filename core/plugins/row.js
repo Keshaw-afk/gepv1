@@ -22,7 +22,7 @@ export default {
     const taken = [...endState(p).values()].filter((o) => o.kind === 'node').map((o) => o.y);
     const y = a.y ?? [180, 260, 100, 320, 40].find((ly) => taken.every((ty) => Math.abs(ty - ly) >= 50)) ?? 180;
     const names = values.map((v, i) => {
-      const reply = runTool(p, 'add', { shape: 'box', label: String(v), x: Math.round(x0 + i * step), y, color: a.color, width, duplicate: true });
+      const reply = runTool(p, 'draw', { shape: 'box', label: String(v), x: Math.round(x0 + i * step), y, color: a.color, width, duplicate: true });
       return / so it is called (.+?)\)/.exec(reply)?.[1] ?? String(v);
     });
     return `Made a row of ${values.length} boxes: ${names.join(', ')} (left to right, ${Math.round(step)} px apart). Use swap to exchange two of them.`;
