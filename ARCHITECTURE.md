@@ -190,8 +190,17 @@ model's job is kept to "pick the verb and the object"; everything else is done i
   draw…"; never inside brackets or at a bare "and"); `fromWords(step, tool, args, names)`: the
   user's words override the model's guesses: together only when said, seconds as said, "by 100 to
   the right", "these"/"them"/"everything"/"the boxes", the colour said last, the object named,
-  and for `draw` the shape, label, colour and place typed (never an invented label);
-  `obviousCall` for simple instructions a model won't call ("hide it", "wait 2 seconds").
+  and for `draw` the shape, label, colour, place and size typed (nothing the user didn't say: no
+  colour, no (0, 0), no shape word as a label); a made-up object name becomes the one named, "the
+  circle" or "it"; `rename` from "name the circle Bomb" / "call it queue" / "rename A to B"; sizes in
+  pixels for `resize` ("radius 60", "increase its radius by 50", "100 pixels wider" → `radius`,
+  `add_size`, `add_width`, `add_height`, which `sizeFrom` turns into factors);
+  `toolFromWords` (the tool the words plainly ask for: connect, rename, resize, remove, color);
+  `obviousCall` for simple instructions a model won't call ("hide it", "wait 2 seconds", renames
+  and pixel resizes). The loop refuses a `color` call when the instruction names no colour. "centre"/"middle" =
+  (320, 180) for move and draw; `color` takes `times` ("6 times": one change after another) and
+  "different"/"random"/"rainbow" colours, which cycle through colours other than the current one
+  (a named colour with `times` flashes: red, back, red).
 - `core/ai_loop.js`: `carryOut(message, {ask, run, brief, names, on, stopped})`. One instruction at a
   time, each in a fresh short conversation (system prompt + what exists + the instruction). A failed
   call goes back with its error (2 retries); a working call ends the instruction (so the model can't

@@ -25,6 +25,17 @@ for how it works and [TODO.md](TODO.md) for what's left. The Lua API reference i
 > latest honest figure). After fixing what those showed, all 26 pass (2026-11-20). The remaining risk
 > is phrasing nobody has tried yet: grow the eval with the user's real instructions, new prompts first.
 > Plugins were only ported (the user will talk about plugins later).
+> **Round 3 (2026-11-20), from the user's own session:** "draw a circle." gave a *red* circle at an invented
+> place, and "name the circle Bomb and increase its radius by 50" turned it red and did neither. Six new
+> prompts (the PLAIN batch, `SUITE=plain node tools/ai_eval.mjs`) scored **1/6** before tuning, 6/6 after:
+> nothing the user didn't say (colour, place, size, a shape word as label), split at "and <verb>"
+> (name, call, label, increase, reduce…), rename and pixel sizes read from the words, made-up names
+> resolved to what the user pointed at, and no `color` call without a colour word. A second message
+> ("center the bomb … different colors in 0.6 seconds, 6 times") added "centre" and repeated colour
+> changes; four prompts for those were written with the fix, so they are not an untuned measure.
+> Full run after round 3: 36/36 (8 tuned, 6 held out, 6 fresh, 6 new, 10 plain words; the one miss,
+> "flash red three times" read as a resize, was fixed and re-run). Next idea discussed with the user:
+> a fine-tuned small model (generated, verified training data; held-out eval), see TODO.
 > **v2.0.0 (the round after v1.1.0).** At the user's request:
 > **removed** `tree_layout`, `push`, `simulate`, rules (spread/fall/drift/towards), the Push tool, Tidy tree,
 > Let it move and the rotation/untangle/rules examples (`core/layout.js`, `core/motion.js`, their tests and
@@ -162,7 +173,7 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 83 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference) | all pass |
+| `npm test` | 87 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference) | all pass |
 | `node tools/ai_eval.mjs` | small-model eval: step-by-step prompts through the assistant's loop (Ollama qwen3:0.6b) | see the AI round 2 note |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
 | `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 6 cases (dfs, network, edge, sizes, curves, stretch) | open in Chrome: title says `20337 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |

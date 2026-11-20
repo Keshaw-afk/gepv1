@@ -6,7 +6,7 @@
 
 import { TOOLS } from './plugins/index.js';
 import { schemaOf, RECIPE } from './ai_tools.js';
-import { splitInstructions, fromWords, placesIn, obviousCall, toolFromWords } from './instructions.js';
+import { splitInstructions, fromWords, placesIn, obviousCall, toolFromWords, hasColourWord } from './instructions.js';
 
 export const SYSTEM = `${RECIPE}
 Always use the tools; never answer with code or explanations.`;
@@ -63,7 +63,10 @@ export async function carryOut(message, { ask, run, brief, names = () => [], on 
           messages.push({ role: 'tool', tool_call_id: call.id, content: 'Already done.' });
           continue;
         }
-        const r = run(tool, args);
+        // a colour nobody asked for ("name the circle Bomb" sent as color red): refuse it
+        const r = tool === 'color' && !hasColourWord(step)
+          ? { error: 'This instruction names no colour, so nothing should change colour. Use the tool its words ask for.' }
+          : run(tool, args);
         calls.push({ step, key, name: tool, args, ...r });
         on({ type: 'call', step, name: tool, args, ...r });
         if (r.error) ok = false;

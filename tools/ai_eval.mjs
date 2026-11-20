@@ -304,6 +304,86 @@ const NEW = [
   },
 ];
 
+// Round 3 (2026-11-20): written from a user's real session before any tuning for it.
+const sz = (o) => (typeof o?.size === 'object' ? o.size : { w: o?.size ?? 1, h: o?.size ?? 1 });
+const about = (a, b) => Math.abs(a - b) <= 0.03;
+const plain = (o) => o && (o.color === undefined || o.color === '#cccccc');
+const oneCircle = (p) => { runTool(p, 'draw', { shape: 'circle' }); p.history = []; p.fresh = []; };
+const PLAIN = [
+  {
+    prompt: 'draw a circle.',
+    check(p) {
+      expect(nodes(p).length === 1 && nodes(p)[0].shape === 'circle', 'one circle');
+      expect(plain(nodes(p)[0]), `no colour was asked for, not ${nodes(p)[0]?.color}`);
+    },
+  },
+  {
+    prompt: 'name the circle Bomb and increase its radius by 50',
+    setup: oneCircle,
+    check(p) {
+      expect(obj(p, 'Bomb'), 'called Bomb');
+      expect(about(sz(obj(p, 'Bomb')).w, 74 / 24), `radius 24 + 50 = 74, not ${sz(obj(p, 'Bomb')).w * 24}`);
+      expect(plain(obj(p, 'Bomb')), 'no colour was asked for');
+    },
+  },
+  {
+    prompt: 'Draw a box. Call it queue. Make it 100 pixels wider.',
+    check(p) {
+      expect(obj(p, 'queue'), 'called queue');
+      expect(about(sz(obj(p, 'queue')).w, 164 / 64) && about(sz(obj(p, 'queue')).h, 1), `64 + 100 = 164 wide, normal height, not ${JSON.stringify(obj(p, 'queue')?.size)}`);
+    },
+  },
+  {
+    prompt: 'Draw a triangle and label it T, then reduce its height by 20.',
+    check(p) {
+      expect(obj(p, 'T')?.shape === 'triangle', 'triangle T');
+      expect(about(sz(obj(p, 'T')).h, 28 / 48) && about(sz(obj(p, 'T')).w, 1), `48 - 20 = 28 high, not ${JSON.stringify(obj(p, 'T')?.size)}`);
+    },
+  },
+  {
+    prompt: 'rename circle 1 to Sun',
+    setup: oneCircle,
+    check(p) { expect(obj(p, 'Sun'), 'called Sun'); expect(nodes(p).length === 1, 'still one object'); },
+  },
+  {
+    prompt: 'Draw a circle A. Make its radius 60.',
+    check(p) {
+      expect(obj(p, 'A'), 'A');
+      expect(about(sz(obj(p, 'A')).w, 2.5), `120 across, not ${sz(obj(p, 'A')).w * 48}`);
+      expect(plain(obj(p, 'A')), 'no colour was asked for');
+    },
+  },
+  // added after the "Bomb" session's second message, written alongside the fix (centre, repeats)
+  {
+    prompt: 'make a circle named bomb. make the bomb blue in color. center the bomb. change the color of the bomb to different colors in 0.6 seconds, 6 times.',
+    check(p) {
+      expect(near(obj(p, 'bomb'), 320, 180), `bomb in the centre, not (${obj(p, 'bomb')?.x}, ${obj(p, 'bomb')?.y})`);
+      const cs = p.steps.filter((st) => st.op === 'color');
+      expect(cs.length === 6 && cs.every((st) => st.dur === 600), `6 colour changes of 0.6 s, not ${cs.length}`);
+      expect(new Set(cs.map((st) => st.color)).size >= 5, 'different colours');
+    },
+  },
+  {
+    prompt: 'Draw a triangle T at (100, 100). Move it to the middle in 2 seconds.',
+    check(p) { expect(near(obj(p, 'T'), 320, 180), 'T in the middle'); expect(total(p) === 2, `2 s, not ${total(p)}`); },
+  },
+  {
+    prompt: 'Draw a circle A at (320, 180). Make it flash red three times.',
+    check(p) {
+      const cs = p.steps.filter((st) => st.op === 'color').map((st) => st.color);
+      expect(cs.length === 3 && cs[0] === 'red' && cs[1] !== 'red' && cs[2] === 'red', `red, back, red, not ${cs.join(', ')}`);
+    },
+  },
+  {
+    prompt: 'Draw a box B. Turn it random colours 4 times, 1 second each.',
+    check(p) {
+      const cs = p.steps.filter((st) => st.op === 'color');
+      expect(cs.length === 4, `4 changes, not ${cs.length}`);
+      expect(total(p) === 4, `4 s, not ${total(p)}`);
+    },
+  },
+];
+
 // ---------- the assistant's loop (core/ai_loop.js) ----------
 async function ask(messages) {
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -327,6 +407,7 @@ async function runCase(c) {
 
 async function suite(title, cases) {
   let passed = 0;
+  if (process.env.SUITE && !title.toLowerCase().includes(process.env.SUITE.toLowerCase())) return 0;
   console.log(`\n${title}`);
   for (const [i, c] of cases.entries()) {
     if (process.env.ONLY && !c.prompt.includes(process.env.ONLY)) continue;
@@ -342,5 +423,6 @@ async function suite(title, cases) {
 const a = await suite('Tuned on:', CASES);
 const b = await suite('Held out (tuned on after the first run):', HELD_OUT);
 const c = await suite('Fresh (tuned on after its first run):', FRESH);
-const d = await suite('New (never tuned on):', NEW);
-console.log(`\n${a} / ${CASES.length} tuned, ${b} / ${HELD_OUT.length} held out, ${c} / ${FRESH.length} fresh, ${d} / ${NEW.length} new, with ${model}`);
+const d = await suite('New (tuned on after its first run):', NEW);
+const e = await suite('Plain words (round 3, never tuned on):', PLAIN);
+console.log(`\n${a} / ${CASES.length} tuned, ${b} / ${HELD_OUT.length} held out, ${c} / ${FRESH.length} fresh, ${d} / ${NEW.length} new, ${e} / ${PLAIN.length} plain words, with ${model}`);

@@ -82,7 +82,7 @@ test('pointing at objects: sets, "all circles", "the red ones", "everything", "t
 test('unnamed shapes are "circle 1", "box 1"; "the circle" when there is one; arcs and via make curves', () => {
   const p = newProject();
   const r = runTool(p, 'draw', { shape: 'circle', x: 100, y: 200 });
-  assert.match(r, /^Drew circle 1 \(no label: call it "circle 1"/);
+  assert.match(r, /^Drew circle 1 at /);
   runTool(p, 'draw', { shape: 'square', x: 400, y: 200 });
   runTool(p, 'move', { label: 'the circle', x: 300, y: 200, arc: 80 });
   const s = p.steps[0];

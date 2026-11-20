@@ -8,12 +8,12 @@
 // "and meanwhile" / "while" (kept in the instruction, so the model knows to add together). It never
 // splits at a bare "and" or a comma inside coordinates: "draw A and B at (1, 2)" stays one.
 
-const VERBS = 'draw|add|put|place|create|make|move|turn|colou?r|paint|connect|link|join|remove|delete|hide|erase|wait|pause|resize|grow|shrink|write|rename|swap|throw|undo|clear';
+const VERBS = 'draw|add|put|place|create|make|move|turn|colou?r|paint|connect|link|join|remove|delete|hide|erase|wait|pause|resize|grow|shrink|increase|decrease|reduce|enlarge|widen|change|write|rename|name|call|label|swap|throw|undo|clear';
 const SHAPES = 'circle|box|square|rectangle|rect|triangle|text|ball|dot|node';
 
 /** "draw a circle A … and a box B …" -> two draws; "draw A and then move it" -> two; "A and B" stays. */
 function andSplit(piece) {
-  const parts = piece.split(new RegExp(`\\s*,?\\s+and\\s+(?=(?:${VERBS})\\b|(?:an?|another|one more)\\s+(?:\\w+\\s+)?(?:${SHAPES})\\b)`, 'i'));
+  const parts = piece.split(new RegExp(`\\s*,?\\s+and\\s+(?=(?:${VERBS})\\b|(?:an?|another|one more)\\s+(?:\\w+\\s+)?(?:${SHAPES}|line|arrow)\\b)`, 'i'));
   const verb = new RegExp(`^\\s*(${VERBS})\\b`, 'i').exec(parts[0])?.[1];
   return parts.map((p, i) => (i && verb && !new RegExp(`^\\s*(?:${VERBS})\\b`, 'i').test(p) ? `${verb} ${p}` : p));
 }
@@ -68,6 +68,14 @@ export function fromWords(step, name, args, known = []) {
   const secs = new RegExp(`${NUM}\\s*(?:s|sec|secs|second|seconds)\\b`).exec(text);
   if (secs && ['move', 'color', 'resize', 'wait', 'swap', 'throw'].includes(name)) a.seconds = Number(secs[1]);
   else if (!secs && name !== 'wait' && a.seconds !== undefined && !/\bsecond|\bsec\b/.test(text)) delete a.seconds;
+  if ((TARGETS[name] || name === 'rename') && typeof a.label === 'string' && !known.some((n) => n.toLowerCase() === a.label.toLowerCase())) {
+    // a name nobody has ("A" when there is only "circle 1"): use what the user pointed at
+    const said = namesIn(step, known);
+    const the = new RegExp(`\\bthe\\s+((?:${SHAPES}|square|rectangle|line|arrow))\\b`).exec(text);
+    if (said.length === 1) a.label = said[0];
+    else if (the) a.label = `the ${the[1]}`;
+    else if (/\b(it|its|this|that)\b/.test(text)) delete a.label;
+  }
   // "these"/"selected": what the user selected; "them"/"they": the last ones
   if (/\b(these|those|selected|selection|highlighted)\b/.test(text) && 'label' in (TARGETS[name] ?? {})) a.label = 'selected';
   else if (/\b(them|they)\b/.test(text) && TARGETS[name] && !/\b(all|every)\b/.test(text)) a.label = 'them';
@@ -89,10 +97,14 @@ export function fromWords(step, name, args, known = []) {
     if (several) { /* the model splits a list of labels and places; keep its own */ }
     else if (named) a.label = named[1];
     else if (a.label !== undefined && !namesIn(String(step), [String(a.label)]).length) delete a.label;
+    if (a.label !== undefined && new RegExp(`^(?:${SHAPES}|square|rectangle|shape)$`, 'i').test(String(a.label).trim())) delete a.label;
     const colours = text.match(COLOUR_WORDS) ?? [];
     if (new Set(colours).size === 1) a.color = colours[0];
+    else if (!colours.length) delete a.color; // "draw a circle" is not "draw a red circle"
     const places = String(step).match(/\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/g) ?? [];
     if (places.length === 1) [a.x, a.y] = places[0].match(/-?\d+(?:\.\d+)?/g).map(Number);
+    else if (!places.length && !/\b(?:x|y)\s*=?\s*\d/.test(text)) { delete a.x; delete a.y; } // a free spot, not (0, 0)
+    if (!/\d/.test(text.replace(/\([^)]*\)/g, '')) && !several) for (const k of ['size', 'width', 'height']) delete a[k];
   }
   if (name === 'connect') { // "from it to the circle", "connect it to B"
     if (/\bfrom (it|this)\b/.test(text) || /^\s*(connect|link|join) (it|this)\b/.test(text)) a.from = 'it';
@@ -112,10 +124,25 @@ export function fromWords(step, name, args, known = []) {
     const times = new RegExp(`\\b(${NUM}|two|three|four|five)\\s*(?:times|x)\\b`).exec(text);
     const k = w ? words[w[1]] : times ? (Number(times[1]) || { two: 2, three: 3, four: 4, five: 5 }[times[1]]) : undefined;
     if (k) { for (const key of ['size', 'width', 'height']) delete a[key]; a.scale = k; }
+    const px = sizeWords(text);
+    if (px) { for (const key of ['scale', 'size', 'width', 'height', 'radius']) delete a[key]; Object.assign(a, px); }
+  }
+  if (name === 'rename') {
+    const r = renameWords(step);
+    if (r) { a.text = r.text; if (r.label === undefined) delete a.label; else a.label = r.label; }
   }
   if (name === 'color') { // the colour it becomes is the last one said: "turn the red ones blue"
     const colours = text.match(COLOUR_WORDS) ?? [];
     if (colours.length) a.color = colours.at(-1);
+    if (VARIED.test(text)) a.color = 'different';
+    const n = timesIn(text);
+    if (n) a.times = n; else delete a.times;
+  }
+  if (name === 'move' || name === 'draw') { // "centre the bomb", "draw a circle in the middle"
+    if (/\b(cent(?:er|re)|middle)\b/.test(text) && !placesIn(step) && !DIRS.some((d) => text.includes(` ${d}`))) {
+      for (const k of ['dx', 'dy', ...DIRS]) delete a[k];
+      a.x = 320; a.y = 180;
+    }
   }
   if (name === 'move') {
     // "right by 100", "100 to the left", "up 50 px", "by 100 to the right"
@@ -132,7 +159,49 @@ export function fromWords(step, name, args, known = []) {
   }
   return a;
 }
+// "increase its radius by 50", "100 pixels wider", "make its radius 60", "width to 200":
+// changes in pixels for the resize tool (radius, add_width, …), or null.
+function sizeWords(text) {
+  const less = /\b(decrease|reduce|shrink|smaller|lower|cut|narrower|shorter)\b/.test(text);
+  const dim = { radius: 'radius', diameter: 'size', size: 'size', width: 'width', height: 'height' };
+  const by = new RegExp(`\\b(radius|diameter|size|width|height)\\b.*?\\bby\\s+${NUM}`).exec(text);
+  if (by) {
+    const n = Number(by[2]) * (less ? -1 : 1);
+    return by[1] === 'radius' ? { add_size: 2 * n } : { [`add_${dim[by[1]]}`]: n };
+  }
+  const comp = new RegExp(`\\b${NUM}\\s*(?:px|pixels?)?\\s+(wider|narrower|taller|shorter|bigger|larger|smaller)\\b`).exec(text);
+  if (comp) {
+    const n = Number(comp[1]) * (/narrower|shorter|smaller/.test(comp[2]) ? -1 : 1);
+    return { [/wider|narrower/.test(comp[2]) ? 'add_width' : /taller|shorter/.test(comp[2]) ? 'add_height' : 'add_size']: n };
+  }
+  const to = new RegExp(`\\b(radius|diameter|width|height)\\s+(?:to\\s+|of\\s+|is\\s+|=\\s*)?${NUM}`).exec(text);
+  if (to) return to[1] === 'radius' ? { radius: Number(to[2]) } : { [dim[to[1]]]: Number(to[2]) };
+  return null;
+}
+
+// "name the circle Bomb", "call it queue", "rename circle 1 to Sun", "label it T": {label, text}
+function renameWords(step) {
+  const s = String(step).trim().replace(/[.!]+$/, '');
+  const m = /^(?:please\s+)?(?:re)?(?:name|call|label)\s+(.+?)\s+(?:to|as)\s+["“']?([^"”']+?)["”']?$/i.exec(s)
+    ?? /^(?:please\s+)?(?:re)?(?:name|call|label)\s+(.+?)\s+["“']?([^"”'\s]+)["”']?$/i.exec(s);
+  if (!m) return null;
+  const target = m[1].trim();
+  return { label: /^(it|this|that)$/i.test(target) ? undefined : target, text: m[2].trim() };
+}
+
+const VARIED = /\b(different|random|various|new|rainbow|many|several)\s+colou?rs?\b|\bcolou?rs? of the rainbow\b/;
+const TIMES_WORDS = { once: 1, twice: 2, thrice: 3, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+/** "6 times", "six times", "twice": how often to repeat a colour change, or 0. */
+function timesIn(text) {
+  const m = /\b(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+times\b(?!\s+(?:as|bigger|larger|smaller|wider|taller|their|its|the))|\b(twice|thrice)\b(?!\s+as)/.exec(text);
+  if (!m) return 0;
+  const w = m[1] ?? m[2];
+  return Number(w) || TIMES_WORDS[w] || 0;
+}
+
 const COLOUR_WORDS = /\b(red|orange|yellow|green|blue|purple|pink|cyan|teal|brown|black|white|grey|gray|lightgrey|darkgrey|navy|gold|violet|magenta|lime)\b/g;
+/** Does the instruction name a colour (a colour word or a hex code)? */
+export const hasColourWord = (step) => { const t = String(step).toLowerCase(); COLOUR_WORDS.lastIndex = 0; const hit = COLOUR_WORDS.test(t) || /#[0-9a-f]{3,6}\b/.test(t) || VARIED.test(t); COLOUR_WORDS.lastIndex = 0; return hit; };
 const TARGETS = { move: { label: 1 }, color: { label: 1 }, resize: { label: 1 }, remove: { label: 1 } };
 
 /** How many places "(x, y)" an instruction names: drawing three needs three calls. */
@@ -143,6 +212,8 @@ const SIMPLE = { hide: 'remove', remove: 'remove', delete: 'remove', erase: 'rem
 /** For an instruction the model would not turn into a call: the obvious call, when there is one. */
 export function obviousCall(step, known = []) {
   const verb = /^\s*(?:please\s+)?(\w+)/i.exec(String(step))?.[1]?.toLowerCase();
+  const said = toolFromWords(step);
+  if (said === 'rename' || (said === 'move' && /^\s*(?:please\s+)?cent(?:er|re)\b/i.test(step)) || (said === 'color' && VARIED.test(String(step).toLowerCase())) || (said === 'resize' && sizeWords(` ${String(step).toLowerCase()} `))) return { name: said, args: fromWords(step, said, {}, known) };
   const name = SIMPLE[verb];
   if (!name) return null;
   const args = fromWords(step, name, {}, known);
@@ -163,11 +234,16 @@ export function toolFromWords(step) {
   const text = ` ${String(step).toLowerCase()} `;
   // "a line from A to B", "an arrow from it to the circle", "connect A and B"
   if (/\b(connect|link|join)\b/.test(text) || /\b(line|arrow|edge)s?\s+(from|between)\b/.test(text)) return 'connect';
+  if (/^\s*(?:please\s+)?(?:rename|name|call|label)\b/.test(text) && renameWords(step)) return 'rename';
+  if (/^\s*(?:please\s+)?cent(?:er|re)\b/.test(text)) return 'move';
+  if (VARIED.test(text)) return 'color';
+  if (sizeWords(text) && !/\b(move|slide|travel|right|left|up|down)\b|\(\s*\d/.test(text)) return 'resize';
   const moving = /\b(move|moves|slide|go|goes|travel|jump|throw|swap|to the|towards|right|left|up|down|by \d)\b|\(\s*\d/.test(text);
   const drawing = /^\s*(draw|add|put|place|create|write)\b/.test(text);
   if (moving || drawing) return null;
   if (/\b(hide|remove|delete|erase|disappear)\b/.test(text)) return 'remove';
-  if (/\b(bigger|smaller|twice|double|half|halve|triple|times|size|grow|shrink|larger|scale)\b/.test(text)) return 'resize';
+  if (timesIn(text) && hasColourWord(text)) return 'color'; // "flash red three times"
+  if (/\b(bigger|smaller|twice|double|half|halve|triple|times|size|grow|shrink|larger|scale|radius|wider|taller|narrower|enlarge)\b/.test(text)) return 'resize';
   if (COLOUR_WORDS.test(text)) { COLOUR_WORDS.lastIndex = 0; return 'color'; }
   return null;
 }

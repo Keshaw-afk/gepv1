@@ -16,8 +16,14 @@ Usability work is judged by how well it serves those three.
 - [x] Round 2 (2026-11-20): verb tools for step-by-step instructions, sets and the Stage selection,
       one instruction at a time with the user's words winning (`core/instructions.js`, `core/ai_loop.js`),
       `tools/ai_eval.mjs`.
+- [x] Round 3 (2026-11-20): plain words from a real session: no invented colour/place, rename
+      ("name the circle Bomb"), sizes in pixels ("increase its radius by 50"); PLAIN eval batch 1/6 → 6/6;
+      "centre", "different colours … 6 times" (colour `times`).
 - [ ] Plugins: the user will say what they should be (today: ported as they were).
 - [ ] Grow the eval with real instructions from the user; fix what fails (new prompts first, then tune).
+- [ ] Maybe: fine-tune qwen3 0.6B/1.7B (LoRA, Colab GPU) on generated instruction → tool-call pairs,
+      checked with runTool; measure on a held-out set with the user's real messages. Waiting on the user
+      (Colab, model size, freeze the tools or settle plugins first).
 - [ ] Let the AI edit an earlier keyframe (today it always works at the end).
 - [ ] Maybe: rotate and fade verbs ("spin it", "fade it out") if users ask for them.
 - [ ] Try the assistant with stronger models (the user's key); tune the recipe from what goes wrong.

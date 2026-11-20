@@ -74,7 +74,10 @@ can click any keyframe and edit it.
     previous one. Time goes on the action ("in 3 seconds"), up to 60 s.
   - Point at what to change: a label ("A"), several ("A, B and C"), "all circles", "the red ones",
     "everything", "it" / "them" (the last ones), or **"these"** for what you selected on the Stage.
-  - "Move it right by 100", "in an arc", "twice as big" work as you'd expect.
+  - "Move it right by 100", "in an arc", "twice as big", "increase its radius by 50", "100 pixels
+    wider", "name the circle Bomb", "centre it", "turn it different colours 6 times" work as
+    you'd expect. Nothing you didn't say is added: "draw a
+    circle" is a plain grey circle in a free spot.
 - **The assistant splits your message into single instructions** and gives the model one at a time.
   The words you typed win over the model's guesses (times, distances, "at the same time", colours,
   labels), so a 0.6B model gets most simple instructions right. `node tools/ai_eval.mjs` measures it.

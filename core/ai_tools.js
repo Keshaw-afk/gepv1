@@ -248,6 +248,13 @@ function sizeFrom(shape, a, current = 1) {
     return packSize({ w: clampSize(now.w * k), h: clampSize(now.h * k) });
   }
   let width = a.width, height = a.height;
+  // in pixels from the instruction's words (core/instructions.js): "radius 60", "100 pixels wider",
+  // "increase its radius by 50" (add_size: the width/diameter grows, proportions kept)
+  if (given(a.radius) && !given(a.size)) a = { ...a, size: num(a.radius, 'radius', 3, 180) * 2 };
+  const nowW = now.w * base.w, nowH = now.h * base.h;
+  if (given(a.add_size)) { width = nowW + Number(a.add_size); height = (nowH * width) / nowW; }
+  if (given(a.add_width)) { width = nowW + Number(a.add_width); height ??= nowH; }
+  if (given(a.add_height)) { height = nowH + Number(a.add_height); width ??= nowW; }
   if (given(a.size) && !given(width) && !given(height)) {
     if (shape === 'text' || shape === 'circle') { // one number: the font size, or the diameter
       const k = num(a.size, 'size', 5, 360) / (shape === 'text' ? FONT_SIZE : base.w);
@@ -339,6 +346,8 @@ const describing = (p, objs) => starting(p) && objs.every((o) => (p.fresh ?? [])
 
 // ---------- the tools ----------
 
+const CYCLE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'cyan']; // "different colours"
+
 const S = (description) => ({ type: 'string', description });
 const N = (description) => ({ type: 'number', description });
 const LABEL = S('which object, e.g. "A"; or several: "A, B", "all circles", "the red ones", "everything", "selected" (what the user selected). Leave it out to mean the last one ("it", "them")');
@@ -372,7 +381,7 @@ function drawTool(p, a, shapeWord) {
   p.last = [id];
   const name = endState(p).get(id).name;
   const what = shape === 'text' ? `text "${label}"` : `${color ? `${color} ` : ''}${label ? `${SHAPE_NAME[shape]} ${name}` : name}`;
-  const called = !label && shape !== 'text' ? ` (no label: call it "${name}", or leave label out to mean it)` : label !== wanted ? ` ("${wanted}" was taken, so it is called ${label})` : '';
+  const called = !label && shape !== 'text' ? '' : label !== wanted ? ` ("${wanted}" was taken, so it is called ${label})` : '';
   return `Drew ${what}${called} at (${x}, ${y}) ${when(p)}.`;
 }
 
@@ -466,12 +475,30 @@ export const TOOLS = [
   {
     name: 'color',
     description: 'Changes the colour of an object (or of a line "A-B"). Example: turn B red = {"label": "B", "color": "red"}',
-    params: { label: LABEL, color: S('the new colour, e.g. red, blue, lightgrey or #ff8800'), seconds: SECONDS, together: TOGETHER },
+    params: {
+      label: LABEL,
+      color: S('the new colour, e.g. red, blue, lightgrey or #ff8800; "different" for a new colour each time'),
+      times: N('optional: how many colour changes, one after another, e.g. 6'),
+      seconds: SECONDS,
+      together: TOGETHER,
+    },
     required: ['color'],
     run(p, a) {
       const objs = findMany(p, a.label, { lines: true });
-      const color = colour(a.color);
       const seconds = secondsOf(a.seconds);
+      const varied = /^(different|random|various|other|new|rainbow|many|several)( colou?rs?)?$/i.test(String(a.color ?? '').trim());
+      const times = given(a.times) ? Math.round(num(a.times, 'times', 1, 50)) : varied ? 6 : 1;
+      if (times > 1 || varied) {
+        // one change after another: a new colour each time ("different colours"), or the colour and back
+        const start = objs[0].color ?? '#cccccc';
+        const one = varied ? null : colour(a.color);
+        const others = CYCLE.filter((c) => colour(c) !== colour(start));
+        const seq = Array.from({ length: times }, (_, i) => (one ? (i % 2 === 0 ? one : start) : others[i % others.length]));
+        seq.forEach((c, i) => record(p, objs.map((o) => ({ op: 'color', target: o.id, color: colour(c) })), { together: i === 0 && a.together, seconds }));
+        p.last = objs.map((o) => o.id);
+        return `${names(objs)} turn${objs.length > 1 ? '' : 's'} ${seq.join(', ')} in turn (${seconds ?? DEFAULT_SECONDS} s each); the last change is ${when(p)}.`;
+      }
+      const color = colour(a.color);
       p.last = objs.map((o) => o.id);
       if (describing(p, objs.map((o) => (o.kind === 'edge' ? { id: o.a } : o))) && seconds === undefined) {
         for (const o of objs) p.scene.get(o.id).color = color;
