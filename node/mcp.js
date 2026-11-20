@@ -51,7 +51,7 @@ export async function callTool(name, args) {
 }
 
 export function createServer(call = callTool) {
-  const server = new Server({ name: 'gepv1', version: '2.0.0' }, { capabilities: { tools: {} }, instructions: RECIPE });
+  const server = new Server({ name: 'gepv1', version: '3.6.0' }, { capabilities: { tools: {} }, instructions: RECIPE });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: schemaOf(t) })),
   }));

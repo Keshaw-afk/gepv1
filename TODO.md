@@ -44,6 +44,7 @@ Usability work is judged by how well it serves those three.
 - [x] Stage and Behaviour merged into one Build tab: Start row + steps, insert steps at any point.
 - [x] Arrange / Record modes; curved moves (`path()`), recorded from a bent drag.
 - [x] Keyframes in Record: changes play together until + New keyframe (always at the end).
+- [x] Released as v3.6.0 (the user chose the number; tagged locally).
 - [x] Each keyframe shows only its own move trails; removed objects leave none.
 - [x] Delete a whole keyframe: Delete in the REPL log, an emptied box while editing, or × on the keyframe row.
 - [x] A REPL entry always becomes the last keyframe (Edit changes an earlier one); the line above the box says what Enter will do.

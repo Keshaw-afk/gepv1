@@ -76,7 +76,11 @@ for how it works and [TODO.md](TODO.md) for what's left. The Lua API reference i
 
 ## 1. Where things stand
 
-- Current release: **v2.0.0** (2026-11-18, tagged and pushed to the private GitHub repo `gepv1`): the
+- Current release: **v3.6.0** (2026-11-20, tagged locally, not pushed; the user chose the number):
+  Arrange and Record with keyframes, the AI tools (in-app assistant, live link, MCP), the coordinate
+  guide, the Lua API reference, code to steps, and the Code tab as a REPL (each entry a keyframe, Edit
+  and Delete any keyframe, new keyframes at the end), with per-keyframe trails.
+  Before that: **v2.0.0** (2026-11-18, tagged and pushed to the private GitHub repo `gepv1`): the
   Build tab, lasso, width/height, stage colours, undo/autosave; rule motion and tree layout removed (see
   the note above). Previous: **v1.1.0** (2026-11-17), v1.0.0 plus shapes and motion. Chosen as a minor bump: every v1.0.0 Lua script still runs;
   the exported SVG *code* changed (`cx`/`cy` → `translate()`, arrows are `<polyline>` with a marker,

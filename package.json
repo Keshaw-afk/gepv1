@@ -1,6 +1,6 @@
 {
   "name": "gepv1",
-  "version": "2.0.0",
+  "version": "3.6.0",
   "description": "GEPV1 - General Environment Programming Engine V1 (minimal web demo)",
   "license": "Apache-2.0",
   "type": "module",
