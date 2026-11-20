@@ -98,6 +98,11 @@ for how it works and [TODO.md](TODO.md) for what's left. The Lua API reference i
   | `9113a03` | A push from the GUI brings its own Let it move (a push alone didn't move anything) |
   | `109b185` | Push: the drag is where the object lands, not a speed |
 
+- **Hosted on GitHub Pages** (2026-11-20, the user's choice: the repo was made public for it):
+  https://keshaw-afk.github.io/gepv1/, rebuilt by `.github/workflows/pages.yml` on every push to
+  `main` (runs `npm test` first). One-time setting: Settings → Pages → Source: GitHub Actions. The
+  hosted page has no server, so MP4 and the Assistant are hidden there (`data-hosted`, see
+  ARCHITECTURE §4). Keep every path in `web/` relative: Pages serves the app under `/gepv1/`.
 - Next release: ask the user which bump (semver: MAJOR breaks old scripts/output, MINOR adds,
   PATCH fixes); release with `npm version <x.y.z>` and push with `--follow-tags`, **only when asked**.
 - `npm test`: 51 tests, all passing.
@@ -184,7 +189,7 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 101 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference, code → steps, tables and maths) | all pass |
+| `npm test` | 102 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference, code → steps, tables and maths, the static site) | all pass |
 | `node tools/ai_eval.mjs` | small-model eval: step-by-step prompts through the assistant's loop (Ollama qwen3:0.6b) | see the AI round 2 note |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
 | `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 7 cases (dfs, network, edge, sizes, curves, stretch, labels) | open in Chrome: title says `27803 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |

@@ -27,6 +27,9 @@ const fengari = window.fengari;
 const $ = (id) => document.getElementById(id);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
+// On a static host (GitHub Pages; tools/build_site.mjs marks the page) there is no server, so no MP4
+// export, AI assistant or live link: those are hidden and a note points to the local app.
+const HOSTED = document.documentElement.hasAttribute('data-hosted');
 const HINTS = {
   arrange: 'Arrange: changes adjust what is there · Click empty space to add a shape (it appears at the moment shown) · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   record: 'Record: changes go into the current keyframe and play together · N: new keyframe at the end · Drag in a curve for a curved move · Drag again to carry on a move · Ctrl+Z: undo',
@@ -1018,7 +1021,7 @@ $('save-code').addEventListener('click', () => saveText(scriptBox.value, 'script
 $('example').addEventListener('change', async () => {
   const name = $('example').value;
   $('example').value = '';
-  replBox.value = (await fetch(`/examples/${name}`).then((r) => r.text())).replace(/\s+$/, '');
+  replBox.value = (await fetch(`examples/${name}`).then((r) => r.text())).replace(/\s+$/, '');
   replSay(name.includes('sort') || name.includes('network') ? 'An example for an empty canvas (New project). Press Enter to make it a keyframe.' : 'Press Enter to make it a keyframe.');
   replBox.focus();
 });
@@ -1394,7 +1397,7 @@ function restoreSaved() {
     return false;
   }
 }
-if (!restoreSaved()) loadStage(await fetch('/examples/stage.lua').then((r) => r.text()));
+if (!restoreSaved()) loadStage(await fetch('examples/stage.lua').then((r) => r.text()));
 steps = pruneSteps(steps, editor.scene);
 point = steps.length; // carry on at the end (0, the start, for a new project)
 setMode('arrange');
@@ -1465,9 +1468,16 @@ function noteAi(name, args) {
   aiNoteTimer = setTimeout(() => { note.hidden = true; }, 4000);
 }
 
-setupAssistant({ runTool: runAiTool, brief: () => briefState(aiProject()), names: () => objectNames(aiProject()) });
+if (HOSTED) {
+  $('dl-mp4').hidden = true;
+  $('dl-svg').classList.add('primary');
+  $('hosted-note').hidden = false;
+  document.querySelector('[data-sub="assistant"]').hidden = true;
+} else {
+  setupAssistant({ runTool: runAiTool, brief: () => briefState(aiProject()), names: () => objectNames(aiProject()) });
+}
 
-if (typeof EventSource === 'function') {
+if (!HOSTED && typeof EventSource === 'function') {
   const live = new EventSource('/api/live');
   live.addEventListener('tool', (e) => {
     const { id, name, args } = JSON.parse(e.data);

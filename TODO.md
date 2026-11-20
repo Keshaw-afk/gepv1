@@ -11,6 +11,13 @@ Usability work is judged by how well it serves those three.
 - [ ] Maybe: let the canvas change objects a code keyframe makes (today: only in code).
 - [ ] Moments in Result say "Step N" while the lists say "Keyframe N": use one word.
 
+## Hosting (2026-11-20)
+
+- [x] GitHub Pages: static build (`tools/build_site.mjs`), workflow on push to `main`, relative paths,
+      MP4 and the Assistant hidden on the hosted page with a note.
+- [ ] Maybe: MP4 in the browser (WebCodecs), so the hosted page can export video too (frames drawn
+      by the browser, not librsvg, so check them against the CLI's).
+
 ## Docs (2026-11-20)
 
 - [x] Lua API reference, `docs/LUA_API.md`: every function, timing, limits, errors, examples;

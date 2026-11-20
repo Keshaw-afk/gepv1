@@ -264,9 +264,17 @@ core/      shared engine (no DOM, no Node APIs; runs in browser and Node)
 node/      CLI, local web server, video export
 web/       editor page
 examples/  stage.lua, dfs.lua, bfs.lua, packets.lua, sort.lua, network.lua
-tools/     verification: pixel_compare, animated_check (see HANDOFF.md)
+tools/     verification: pixel_compare, animated_check (see HANDOFF.md); build_site (GitHub Pages)
 test/      node:test suites
 ```
+
+**Hosted (static) build.** `tools/build_site.mjs` copies what the server serves (`web/`, `core/`,
+`examples/`, `vendor/fengari-web.js`, `index.html` at the root) into `site/` and marks the page
+`<html data-hosted>`. `.github/workflows/pages.yml` runs the tests, builds it and publishes it to
+GitHub Pages on every push to `main`. The page and its fetches use relative paths only, because
+Pages serves it under `/gepv1/` (`test/site.test.js` checks this and that every module is there).
+With `data-hosted`, `web/app.js` hides what needs the server (MP4 export, the Assistant tab, the live
+link) and shows a note pointing to the local app.
 
 | File | Responsibility |
 |------|----------------|
@@ -288,6 +296,7 @@ test/      node:test suites
 | `node/export.js` | Write SVG frames; encode MP4 with ffmpeg |
 | `node/cli.js` | `stage.lua script.lua --trace --frame N out.svg --video out.mp4 --svg out.svg` |
 | `node/server.js` | Serves the page; `POST /api/export` runs the engine + ffmpeg (localhost only) |
+| `tools/build_site.mjs` | The static site for GitHub Pages (`site/`), marked `data-hosted` |
 | `web/editor.js` | Tools; `'stage'` mode (at Start): pointer → scene edits. `'behaviour'` mode (at a step): drag → move step, shape → add step, line/arrow → connect step |
 | `web/app.js` | Tabs (Build → Result), the point in the steps (Start or after step k), steps list, code, frame player, moments, output, downloads |
 | `web/history.js` | undo/redo by debounced JSON snapshots (tested) |

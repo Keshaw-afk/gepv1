@@ -18,7 +18,11 @@ npm run check:pixels      # renderer vs v1.0.0 in librsvg (needs ffmpeg with lib
 npm run check:animated    # writes out/animated_check.html; open in Chrome, read the title
 node node/cli.js stage.lua script.lua --trace --frame N out.svg --svg anim.svg --video out.mp4
 claude mcp add gepv1 -- node $PWD/node/mcp.js   # the AI tools over MCP (core/ai_tools.js + plugins)
+node tools/build_site.mjs # static site in site/; pushing main publishes it to GitHub Pages
 ```
+
+Hosted at https://keshaw-afk.github.io/gepv1/ (no server there: no MP4 or Assistant). Keep paths in
+`web/` relative, since Pages serves the app under `/gepv1/`.
 
 ## Rules of the house
 

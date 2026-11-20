@@ -17,6 +17,12 @@ npm install
 npm start            # http://localhost:8080  (PORT=xxxx npm start to change)
 ```
 
+**Online:** https://keshaw-afk.github.io/gepv1/ runs the same app with no install (GitHub Pages,
+published from `main` by `.github/workflows/pages.yml`). It has everything except MP4 export and the
+AI assistant, which need the local server; the animated SVG and single frames work there too. Your
+work is saved in that browser only. To build the static site yourself: `node tools/build_site.mjs`
+(writes `site/`).
+
 The page has two tabs: **Build → Result**.
 1. **Build** has one canvas, two modes and, in the panel, a list that starts with **Start** followed by
    your steps. Click a row to work at that point (like keyframes); the canvas shows the picture there.
