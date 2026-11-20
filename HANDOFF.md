@@ -13,6 +13,13 @@ for how it works and [TODO.md](TODO.md) for what's left. The Lua API reference i
 > run in the open app tab via the server's live link, so every keyframe is editable afterwards. **The tools must
 > stay very easy for a simple AI** (labels not ids, optional positions, forgiving arguments, replies that say what
 > to do next). See ARCHITECTURE §3b. The Fabric.js + Matter.js rebuild plan was dropped.
+> **The Code tab is a REPL (2026-11-20, the user's decision).** The user found that code didn't match the
+> picture and steps. Their design: each REPL entry makes a keyframe, and the keyframes are listed beside it
+> as Lua, GUI-made ones included. An entry that starts everything together becomes plain steps; anything
+> else is one *code keyframe* (`{op: 'code'}`), played verbatim and exact (ARCHITECTURE, "The REPL").
+> Converting whole scripts into plain keyframes was tried first and refused most examples (their changes
+> overlap: `color(v, "black"); wait(0.3)` with 0.5 s colours), which is why code keyframes exist. Open:
+> the canvas can't change objects a code keyframe makes (they are locked); ask the user before extending.
 > **AI round 2 (2026-11-20).** The user's philosophy: **very small, cheap models**, and users who describe what
 > they want **step by step in plain words**, pointing at an object or a set of objects ("make these red").
 > So the tools became one per everyday verb (`draw`, `move`, `color`, …) with no keyframe bookkeeping
@@ -173,7 +180,7 @@ in older docs was only a persona for the prototype. Judge changes by these three
 
 | Command | What it checks | Expected today |
 |---------|----------------|----------------|
-| `npm test` | 87 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference) | all pass |
+| `npm test` | 92 unit/integration tests (engine, steps, SVG, CLI, MP4, AI tools, loop, the Lua API reference, code → steps) | all pass |
 | `node tools/ai_eval.mjs` | small-model eval: step-by-step prompts through the assistant's loop (Ollama qwen3:0.6b) | see the AI round 2 note |
 | `npm run check:pixels` | current renderer vs `v1.0.0` (librsvg pixels; export and inline flavours) | 89 frames, 4 differ by ≤ 2 in a channel (anti-aliasing of `translate()` vs `cx`) |
 | `npm run check:animated` | writes `out/animated_check.html`: the animated SVG vs the player, every 23 ms, 6 cases (dfs, network, edge, sizes, curves, stretch) | open in Chrome: title says `20337 checks, 3 failures` (all `network` at 2100 ms, a command's exact start instant where Chrome's clock is 0.5 ms behind) |

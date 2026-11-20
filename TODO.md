@@ -6,7 +6,10 @@ Usability work is judged by how well it serves those three.
 ## Code and the picture (2026-11-20)
 
 - [x] The steps list shows what the code does, read-only, after the steps; a row shows that moment.
-- [ ] "Turn code into steps": convert script.lua into stage objects and keyframes, exactly or not at all.
+- [x] Code tab as a REPL: each entry is a keyframe (plain steps when it can be, else a code keyframe
+      played as written); the log shows every keyframe as Lua, GUI-made or typed. `finish()` added.
+- [ ] Maybe: let the canvas change objects a code keyframe makes (today: only in code).
+- [ ] Moments in Result say "Step N" while the lists say "Keyframe N": use one word.
 
 ## Docs (2026-11-20)
 

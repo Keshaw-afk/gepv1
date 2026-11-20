@@ -163,6 +163,23 @@ it is no change in the timeline, no moment and no trace line.
 
 ---
 
+### The REPL (Code tab) and code keyframes
+
+Each entry is run at the point shown, after stage.lua and the steps before it, and inserted there
+(like Record). `codeToSteps` (`core/code_steps.js`) turns it into steps: when everything starts
+together (one keyframe), it becomes plain steps, editable on the canvas; at Start, objects it makes at
+once go into the starting picture. Anything else becomes one step `{op: 'code', id, lua}`, which
+steps.lua plays verbatim as `do <lua> end; finish()` (`finish()` waits until every started change has
+ended), so it is exact: a test checks that dfs, bfs, packets and sort give the same timeline as a code
+keyframe and as script.lua. Objects a code keyframe makes get ids `<step id>.<n>` and are `locked`
+(shown, not selectable); `sourceOf` stops at a code keyframe, so Arrange refuses to adjust what code
+may set (Record still works). The log above the box is generated from the steps (`buildSteps` lines
+per keyframe; a code keyframe shows its own text), so the GUI and the code can't drift. The variable
+typed for an object (`b = node("ball", …)`) is kept (`name` on the add step or stage node) so the
+next entry can use it. `codeToSteps` also refuses (ConvertError) what can't be exact as keyframes:
+overlapping changes, instant moves; it checks every conversion frame by frame. Old projects' script.lua
+still plays after the steps, listed read-only under them.
+
 ## 3b. Built by an AI (tools, plugins, MCP, assistant)
 
 GEPV1's aim is **academic animations built by an AI** through a procedure we provide. The AI never writes
@@ -356,6 +373,7 @@ move(id, x, y, dur?, ease?)  -- animate position to (x, y); ease "linear" (defau
 path(id, {{x, y}, …}, dur?, ease?) -- a curved move from where it is through the points, smooth, at even speed
 remove(id)              -- the object disappears (a node takes its lines with it)
 wait(t)                 -- advance the script clock by t seconds
+finish()                -- wait until every change that has started has ended
 pos(id)                 -- x, y of a node right now (also halfway through a move)
 neighbors(id)           -- list of nodes connected to id (edges are undirected, creation order)
 edge_of(a, b)           -- id of the edge between a and b, or nil

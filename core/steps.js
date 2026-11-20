@@ -6,10 +6,13 @@
 //   { op: 'move',    target, x, y, dur, ease?, together }  ease: 'smooth' (default linear)
 //   { op: 'path',    target, points: [{x, y}, …], dur, ease?, together }  a curved move through the points
 //   { op: 'size',    target, size, dur, ease?, together }  size = { w, h } (or one number for both); 1 = normal
-//   { op: 'add',     id, shape, label, x, y, size?, together }  a new object appears
+//   { op: 'add',     id, shape, label, x, y, size?, name?, together }  a new object appears
+//                                  (name: its Lua variable, when one was typed in the REPL)
 //   { op: 'connect', id, a, b, directed, together }        a new line or arrow appears
 //   { op: 'remove',  target, together }                    an object disappears (a node takes its lines)
 //   { op: 'wait',    dur }
+//   { op: 'code',    id, lua }    a code keyframe: Lua typed in the REPL, played as written (steps.lua
+//                                  wraps it in do … end; finish()), its own keyframe
 // target, a and b are object ids: numbers for stage objects, 's1', 's2', … for objects that steps
 // create (so the two never clash). dur is in ms. Steps play one after another, except that a step
 // with together=true starts at the same time as the step before it.
@@ -20,7 +23,7 @@ import { sizeOf } from './shapes.js';
 /** Steps that happen at once (no duration). */
 export const INSTANT = new Set(['add', 'connect', 'remove']);
 /** Steps that let time run on their own: nothing plays "with" them. */
-export const RUNS_TIME = new Set(['wait']);
+export const RUNS_TIME = new Set(['wait', 'code']);
 
 // Positions in steps are whole pixels.
 const coord = (v) => String(Math.round(v));
@@ -116,7 +119,7 @@ export function buildSteps(steps, scene) {
   let k = 1;
   for (const s of steps) {
     if (s.op !== 'add') continue;
-    let name = s.label;
+    let name = isUsableName(s.name) && !used.has(s.name) ? s.name : s.label; // the variable typed in the REPL, else the label
     if (!isUsableName(name) || used.has(name)) {
       while (used.has(`obj_${k}`)) k++;
       name = `obj_${k}`;
@@ -162,6 +165,11 @@ export function buildSteps(steps, scene) {
       stepAtLine.push(i);
       continue;
     }
+    if (s.op === 'code') { // played as written; locals stay inside; the keyframe ends when its changes do
+      flush();
+      for (const line of ['do', ...String(s.lua).replace(/\s+$/, '').split('\n'), 'end; finish()']) { lines.push(line); stepAtLine.push(i); }
+      continue;
+    }
     if (!s.together) flush();
     group.push({ step: i, code: call(s) });
     longest = Math.max(longest, lasts(s));
@@ -172,15 +180,23 @@ export function buildSteps(steps, scene) {
 
 export const stepsToLua = (steps, scene) => buildSteps(steps, scene).code;
 
+/** Objects made by code (a code keyframe or script.lua): shown, but changed only in code. */
+export const isLocked = (id) => typeof id === 'string' && (id.startsWith('lua-') || id.includes('.'));
+
 /** Program ids -> editor ids for the stage objects and the objects steps.lua creates. */
 export function editorIdMap(result, scene, steps, stepAtLine) {
   const order = [...scene.nodes(), ...scene.edges()].map((o) => o.id);
   const cmds = result.timeline.commands;
   const map = new Map(cmds.slice(0, result.stageCommands).map((c, i) => [c.id, order[i]]));
+  const made = new Map(); // code keyframe -> how many objects it has made
   for (const c of cmds.slice(result.stageCommands)) {
     if (c.op !== 'create' || c.src?.file !== 'steps.lua') continue;
     const s = steps?.[stepAtLine?.[c.src.line]];
-    if (s?.id !== undefined) map.set(c.id, s.id);
+    if (s?.op === 'code') { // several objects: "<step id>.<n>", read-only in the editor
+      const n = (made.get(s) ?? 0) + 1;
+      made.set(s, n);
+      map.set(c.id, `${s.id}.${n}`);
+    } else if (s?.id !== undefined) map.set(c.id, s.id);
   }
   return map;
 }
@@ -196,13 +212,14 @@ export function toEditorIds(state, result, scene, steps, stepAtLine) {
   const map = editorIdMap(result, scene, steps, stepAtLine);
   const id = (x) => map.get(x) ?? `lua-${x}`; // objects made by script.lua aren't editable here
   return {
-    nodes: state.nodes.map((n) => ({ ...n, id: id(n.id) })),
+    nodes: state.nodes.map((n) => ({ ...n, id: id(n.id), ...(isLocked(id(n.id)) && { locked: true }) })),
     edges: state.edges.map((e) => ({ ...e, id: id(e.id), a: id(e.a), b: id(e.b) })),
   };
 }
 
 /**
  * Which step decides an object's position, size or colour at point k (after the first k steps)?
+ * A code keyframe on the way counts as deciding it (its index is returned; code can't be adjusted).
  * Returns the index of the last step before k that sets it (a move, path, size or colour step, or
  * the add step that created the object), or -1 when it is still as on the stage. Arrange mode
  * changes that step (or the stage) instead of recording a new one.
@@ -212,6 +229,7 @@ export function sourceOf(steps, k, id, prop) {
   const sets = { pos: ['move', 'path'], size: ['size'], color: ['color'] }[prop];
   for (let j = Math.min(k, steps.length) - 1; j >= 0; j--) {
     const s = steps[j];
+    if (s.op === 'code') return j; // it may set this too; the caller can't adjust code
     if (sets.includes(s.op) && s.target === id) return j;
     if ((s.op === 'add' || s.op === 'connect') && s.id === id) return j;
   }

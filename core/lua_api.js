@@ -20,7 +20,7 @@ const MAX_COMMANDS = 50_000;
 
 // Every global the API defines (generated variable names must never shadow these).
 export const API_NAMES = ['node', 'rect', 'triangle', 'text', 'edge', 'arrow', 'color', 'move', 'remove',
-  'size', 'path', 'wait', 'pos', 'neighbors', 'edge_of'];
+  'size', 'path', 'wait', 'finish', 'pos', 'neighbors', 'edge_of'];
 
 export class ScriptError extends Error {}
 
@@ -205,6 +205,11 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
       lua.lua_pushnumber(L, p.y);
       return 2;
     },
+    // finish(): waits until every change that has started has ended (a code keyframe ends with it)
+    finish(L) {
+      timeline.wait(Math.max(0, timeline.durationMs - timeline.clockMs));
+      return 0;
+    },
     wait(L) {
       const s = lauxlib.luaL_checknumber(L, 1);
       if (s < 0) fail('wait time must be >= 0');
@@ -257,5 +262,17 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   const stageCommands = timeline.commands.length;
   run(steps, 'steps.lua');
   run(script, 'script.lua');
-  return { scene, timeline, log, stageCommands };
+  // the global variables that hold an object at the end (name -> id), e.g. ball = node("ball", …)
+  const globals = new Map();
+  lua.lua_pushglobaltable(L);
+  lua.lua_pushnil(L);
+  while (lua.lua_next(L, -2) !== 0) {
+    if (lua.lua_type(L, -2) === lua.LUA_TSTRING && lua.lua_isinteger(L, -1)) {
+      const name = to_jsstring(lua.lua_tostring(L, -2)), id = lua.lua_tointeger(L, -1);
+      if (scene.get(id) && !API_NAMES.includes(name)) globals.set(name, id);
+    }
+    lua.lua_pop(L, 1);
+  }
+  lua.lua_pop(L, 1);
+  return { scene, timeline, log, stageCommands, globals };
 }

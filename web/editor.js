@@ -199,7 +199,7 @@ export class Editor {
   selectedNodes() { return this.selection().filter((o) => o.kind === 'node'); }
 
   setSelection(ids) {
-    this.sel = new Set(ids.filter((id) => this.lookup(id)));
+    this.sel = new Set(ids.filter((id) => this.lookup(id) && !this.lookup(id).locked)); // code's objects can't be picked
     this.render();
     this.onSelect?.(this.selection());
   }
@@ -274,6 +274,7 @@ export class Editor {
 
     const id = this.hitId(e);
     const obj = this.lookup(id);
+    if (obj?.locked) { this.onLocked?.(obj); return; } // made by code: changed only in code
     const linking = isLink(this.tool) || e.button === 2 || e.shiftKey;
 
     if (obj?.kind === 'node') {

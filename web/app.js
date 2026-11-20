@@ -15,6 +15,7 @@ import { formatTrace } from '../core/trace.js';
 import { outputSettings } from '../core/output.js';
 import { frameAt, landmarks, renderFrame, frameName } from '../core/frames.js';
 import { Editor } from './editor.js';
+import { codeToSteps, ConvertError } from '../core/code_steps.js';
 import { runTool, briefState, objectNames } from '../core/ai_tools.js';
 import '../core/plugins/index.js'; // registers the plugin tools
 import { setupAssistant } from './assistant.js';
@@ -133,6 +134,7 @@ $('coords').addEventListener('click', () => {
   $('coords-at').hidden = true;
   try { localStorage.setItem('gepv1.coords', editor.coords ? '1' : ''); } catch { /* no storage */ }
 });
+editor.onLocked = () => { $('canvas-hint').textContent = 'Made by a code keyframe: change it in the Code tab (Edit on that keyframe).'; };
 editor.onPointer = (x, y) => {
   const at = $('coords-at');
   at.hidden = x === null || !editor.coords;
@@ -266,31 +268,50 @@ function insertAfter(j, step) {
   if (j + 1 < point || (j + 1 === point && j >= 0)) point++;
 }
 
+// A code keyframe may set anything after it: Arrange can't adjust code, so it says what to do instead.
+let codeBarrier = null;
+const blockedByCode = (j) => {
+  if (steps[j]?.op !== 'code') return false;
+  codeBarrier = keyframes(steps).findIndex((f) => f.start === j) + 1;
+  return true;
+};
+function sayCodeBarrier() {
+  if (codeBarrier === null) return;
+  showError(`Keyframe ${codeBarrier} is code and may set this, so Arrange can't adjust it here. Use Record to add a change, or click a keyframe before it.`);
+  codeBarrier = null;
+}
+
 function adjustMoves(moves) {
   for (const m of moves) {
     const j = sourceOf(steps, point, m.id, 'pos');
+    if (blockedByCode(j)) continue;
     if (j < 0) Object.assign(editor.scene.get(m.id) ?? {}, { x: m.x, y: m.y });
     else if (steps[j].op === 'path') steps[j].points = reshapePath(steps[j].points, m.x, m.y);
     else Object.assign(steps[j], { x: m.x, y: m.y });
   }
   everythingChanged();
+  sayCodeBarrier();
 }
 
 function adjustSizes(list) {
   for (const { id, size } of list) {
     const j = sourceOf(steps, point, id, 'size');
+    if (blockedByCode(j)) continue;
     if (j < 0) { if (editor.scene.get(id)) editor.scene.get(id).size = size; } else steps[j].size = size;
   }
   everythingChanged();
+  sayCodeBarrier();
 }
 
 function adjustColors(ids, color) {
   for (const id of ids) {
     const j = sourceOf(steps, point, id, 'color');
+    if (blockedByCode(j)) continue;
     if (j < 0) { if (editor.scene.get(id)) editor.scene.get(id).color = color; } else if (steps[j].op === 'color') steps[j].color = color;
     else insertAfter(j, { op: 'color', target: id, color }); // an object a step added: colour it as it appears
   }
   everythingChanged();
+  sayCodeBarrier();
 }
 
 /**
@@ -558,6 +579,12 @@ function describeChange(name, c) {
 }
 
 function describe(s, names) {
+  if (s.op === 'code') {
+    const w = el('span', 'what');
+    const lines = s.lua.split('\n').filter((l) => l.trim());
+    w.append(el('i', 'op code', '{ }'), ' ', el('code', null, lines[0] ?? ''), lines.length > 1 ? ` (${lines.length} lines)` : '');
+    return w;
+  }
   if (s.op === 'wait') { const w = el('span', 'what'); w.append(el('b', null, 'Pause')); return w; }
   if (s.op === 'add') return describeChange(s.label, { op: 'add', kind: kindName({ kind: 'node', shape: s.shape }).toLowerCase() });
   if (s.op === 'connect') return describeChange(names.nameOf(s.id), { op: 'connect', kind: s.directed ? 'arrow' : 'line' });
@@ -630,7 +657,7 @@ function renderSteps() {
     } else {
       n++;
       const group = steps.slice(f.start, f.end);
-      const timed = group.filter((s) => !INSTANT.has(s.op));
+      const timed = group.filter((s) => !INSTANT.has(s.op) && s.op !== 'code');
       const head = el('li', `keyframe${here ? ' current' : ''}`);
       const w = el('span', 'what');
       w.append(el('b', null, `Keyframe ${n}`));
@@ -662,6 +689,7 @@ function renderSteps() {
     if (recording() && here && (newKeyframe || first.op === 'wait')) list.append(marker('The next keyframe goes here'));
   }
   renderCodeRows(list);
+  renderRepl();
   // keep the current point in view by scrolling the list only (scrollIntoView would move the whole page)
   const mark = list.querySelector('.marker') ?? list.querySelector('.current');
   if (mark && (mark.offsetTop < list.scrollTop || mark.offsetTop + mark.offsetHeight > list.scrollTop + list.clientHeight)) {
@@ -753,7 +781,127 @@ function showCodeMoment() {
   return true;
 }
 
-// ---------- 2. Behaviour: code ----------
+// ---------- 2. Behaviour: the REPL ----------
+// Lua typed here becomes a keyframe at the point shown (like Record). Changes that all start together
+// become ordinary steps, editable on the canvas; anything else (waits, loops, algorithms) is one code
+// keyframe, played as written. The log above the box is the keyframes as Lua, whoever made them.
+const replBox = $('repl');
+let replEditing = null; // the code keyframe being edited (its step), or null
+const replPast = []; let replBack = 0; // what was typed before (↑ / ↓)
+
+function replSay(text, error = false) {
+  $('repl-msg').hidden = !text;
+  $('repl-msg').textContent = text ?? '';
+  $('repl-msg').classList.toggle('error', error);
+}
+
+/** "steps.lua:12: …" in a code keyframe -> "line 3: …" of what was typed. */
+function replError(message, built, index) {
+  const m = /^steps\.lua:(\d+):\s*/.exec(message);
+  if (!m) return message.replace(/^script\.lua:(\d+):\s*/, 'line $1: ');
+  const first = built.stepAtLine.indexOf(index); // the "do" line
+  return `line ${Number(m[1]) - first}: ${message.slice(m[0].length)}`;
+}
+
+function runEntry({ fromOldCode = false } = {}) {
+  const lua = replBox.value.replace(/\s+$/, '');
+  if (!lua.trim()) return false;
+  const at = replEditing ? steps.indexOf(replEditing) : point;
+  if (at < 0) { replEditing = null; return replSay('That keyframe is gone; nothing was changed.', true); }
+  const upto = steps.slice(0, at), after = steps.slice(replEditing ? at + 1 : at);
+  let added = null, scene = editor.scene;
+  try {
+    const r = codeToSteps(fengari, editor.scene, upto, lua, { taken: after });
+    const extra = r.steps.slice(upto.length);
+    if (keyframes(extra).length <= 1 && !extra.some((s) => s.op === 'wait')) { added = extra; scene = r.scene; }
+  } catch (e) {
+    if (!(e instanceof ConvertError)) return replSay(replError(e.message), true);
+  }
+  if (!added) { // a code keyframe: check that it runs here
+    added = [{ op: 'code', id: nextStepId([...steps]), lua }];
+    const built = buildSteps([...upto, ...added], editor.scene);
+    try { runProgram(fengari, { stage: toStageLua(editor.scene), steps: built.code }); } catch (e) { return replSay(replError(e.message, built, upto.length), true); }
+  }
+  replPast.push(lua);
+  replBack = replPast.length;
+  editor.scene = scene;
+  steps = [...upto, ...added, ...after];
+  point = keyframeEndAt(steps, upto.length + added.length);
+  codeAt = null;
+  newKeyframe = false;
+  justAdded = new Set(added);
+  const what = !added.length ? 'Added to the starting picture.' : added[0].op === 'code' ? 'A code keyframe: it plays as written.' : 'A keyframe: you can also change it on the canvas.';
+  replSay(replEditing ? 'Keyframe replaced.' : what);
+  replEditing = null;
+  replBox.value = '';
+  if (fromOldCode) { scriptBox.value = ''; updateRunOrder(); }
+  everythingChanged();
+  justAdded = new Set();
+  return true;
+}
+
+replBox.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runEntry(); return; }
+  if (e.key === 'Escape' && replEditing) { replEditing = null; replBox.value = ''; replSay('Not changed.'); renderRepl(); return; }
+  // ↑ / ↓ at the start or end of the box: what was typed before
+  const atStart = replBox.selectionStart === 0, atEnd = replBox.selectionEnd === replBox.value.length;
+  if (e.key === 'ArrowUp' && atStart && replBack > 0) { e.preventDefault(); replBox.value = replPast[--replBack]; }
+  else if (e.key === 'ArrowDown' && atEnd && replBack < replPast.length) { e.preventDefault(); replBox.value = replPast[++replBack] ?? ''; }
+});
+$('repl-run').addEventListener('click', runEntry);
+$('legacy-keyframe').addEventListener('click', () => {
+  const keep = point, typed = replBox.value;
+  replBox.value = scriptBox.value;
+  replEditing = null;
+  point = steps.length; // the old code played after everything
+  if (!runEntry({ fromOldCode: true })) { point = keep; replBox.value = typed; } // the message says why
+});
+
+/** The log: Start and every keyframe as Lua, in the order they play; click one to work there. */
+function renderRepl() {
+  const log = $('repl-log');
+  if (!log) return;
+  log.replaceChildren();
+  let built;
+  try { built = buildSteps(steps, editor.scene); } catch { return; }
+  const lines = built.code.split('\n');
+  const item = (title, code, k, { current, step } = {}) => {
+    const li = el('li', `repl-item${current ? ' current' : ''}${step?.op === 'code' ? ' code' : ''}${replEditing && step === replEditing ? ' editing' : ''}`);
+    const head = el('div', 'repl-head');
+    head.append(el('b', null, title));
+    if (step?.op === 'code') {
+      const edit = el('button', 'repl-edit', 'Edit');
+      edit.type = 'button';
+      edit.title = 'Put this code in the box; Enter replaces the keyframe';
+      edit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        replEditing = step;
+        replBox.value = step.lua;
+        replSay('Editing this keyframe: Enter replaces it, Esc leaves it as it is.');
+        replBox.focus();
+        renderRepl();
+      });
+      head.append(edit);
+    }
+    li.append(head, el('pre', null, code));
+    li.addEventListener('click', () => setPoint(k));
+    log.append(li);
+  };
+  const stage = toStageLua(editor.scene).split('\n').filter((l) => l.trim() && !l.startsWith('--')).join('\n');
+  item('Start', stage || '-- empty', 0, { current: point === 0 && codeAt === null });
+  let n = 0;
+  for (const f of keyframes(steps)) {
+    const first = steps[f.start];
+    const code = first.op === 'code' ? first.lua
+      : lines.filter((_, i) => { const j = built.stepAtLine[i + 1]; return j >= f.start && j < f.end; }).join('\n');
+    const title = first.op === 'wait' ? 'Pause' : `Keyframe ${++n}${first.op === 'code' ? ' · code' : ''}`;
+    item(title, code, f.end, { current: point === f.end && codeAt === null, step: first });
+  }
+  const cur = log.querySelector('.current'); // scroll the log only, not the page
+  if (cur && (cur.offsetTop < log.scrollTop || cur.offsetTop + cur.offsetHeight > log.scrollTop + log.clientHeight)) log.scrollTop = cur.offsetTop - 8;
+}
+
+// ---------- 2. Behaviour: old code (script.lua) ----------
 const scriptBox = $('script');
 scriptBox.addEventListener('keydown', (e) => {
   if (e.key !== 'Tab') return;
@@ -773,9 +921,9 @@ $('save-code').addEventListener('click', () => saveText(scriptBox.value, 'script
 $('example').addEventListener('change', async () => {
   const name = $('example').value;
   $('example').value = '';
-  scriptBox.value = await fetch(`/examples/${name}`).then((r) => r.text());
-  updateRunOrder();
-  renderSteps();
+  replBox.value = (await fetch(`/examples/${name}`).then((r) => r.text())).replace(/\s+$/, '');
+  replSay(name.includes('sort') || name.includes('network') ? 'An example for an empty canvas (New project). Press Enter to make it a keyframe.' : 'Press Enter to make it a keyframe.');
+  replBox.focus();
 });
 
 function codeLines() {
@@ -784,6 +932,8 @@ function codeLines() {
 
 function updateRunOrder() {
   const lines = codeLines();
+  $('legacy-code').hidden = !lines;
+  $('legacy-lines').textContent = lines;
   $('code-badge').textContent = lines ? `${lines} lines` : '';
   $('code-count').textContent = lines;
   $('code-note').hidden = !lines; // never let code play after the steps without saying so

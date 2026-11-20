@@ -40,10 +40,16 @@ The page has two tabs: **Build → Result**.
    handles: right edge = width, bottom edge = height, corner = both (Shift keeps the proportions); or
    type **W** and **H**. The label never stretches. Undo/redo (Ctrl+Z / Ctrl+Shift+Z), copy and paste,
    arrow keys to nudge (at Start), and an optional snap-to-grid (G) are there too, and a **coordinates** guide (the ∟ button: x and y on the canvas, and where the pointer is, for instructions like "draw a circle at (100, 180)"). Your work is autosaved
-   in the browser; **New project** starts again. The **Code** tab in the panel is for loops and
-   algorithms (DFS, BFS and others under **Load example…**); Run plays start → steps → code. What the
-   code does is listed, read-only, under your steps (**From the code**); click a row to see the
-   picture at that moment. It is changed only in the Code tab.
+   in the browser; **New project** starts again.
+   - **Code** is a REPL: type Lua and press Enter, and it becomes a keyframe at the moment shown
+     (Shift+Enter for a new line, ↑ for what you typed before). Above the box, Start and every keyframe
+     are shown as Lua, whether you made them by typing or on the canvas; click one to work there.
+     Changes that all start together become ordinary keyframes you can also change on the canvas.
+     Anything else (waits, loops, algorithms such as DFS from **Example…**) is one **code keyframe**,
+     played as written; **Edit** puts it back in the box. Objects a code keyframe makes are changed
+     only in code, and `local` variables don't carry over to the next entry (globals do).
+   - Code from before the REPL still plays after all keyframes; **Make it the last keyframe** turns it
+     into a code keyframe.
 2. **Result:** works in **frames**, the same frames as the MP4. Step with ‹ › or ←/→ (Shift: 10),
    type a frame number, or jump between **Moments**: the frames where a change has just finished,
    with the step or Lua line that made it (`[` `]`). Download an **MP4 video**, or open the **animated SVG**

@@ -137,25 +137,38 @@
         </div>
 
         <div data-subpanel="code" hidden>
-          <p class="hint">For loops and algorithms. Runs after the steps.</p>
+          <p class="hint">Type Lua and press <kbd>Enter</kbd>: it becomes a keyframe at the moment shown. <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line. Keyframes you make on the canvas show here as Lua too.</p>
+          <ol id="repl-log" class="repl-log" aria-label="The keyframes as Lua"></ol>
+          <div class="repl-in">
+            <span class="prompt" aria-hidden="true">›</span>
+            <textarea id="repl" rows="2" spellcheck="false" wrap="off" aria-label="Lua for a new keyframe" placeholder='move(A, 300, 100, 2)'></textarea>
+          </div>
+          <p id="repl-msg" class="repl-msg" hidden></p>
           <div class="toolbar">
-            <select id="example" aria-label="load an example">
-              <option value="" selected disabled>Load example…</option>
+            <select id="example" aria-label="put an example in the box">
+              <option value="" selected disabled>Example…</option>
               <option value="dfs.lua">Depth-first search</option>
               <option value="bfs.lua">Breadth-first search</option>
               <option value="packets.lua">Packets A → B → D</option>
               <option value="sort.lua">Bubble sort (empty stage)</option>
               <option value="network.lua">Router network (empty stage)</option>
             </select>
-            <button id="save-code" type="button" title="Download script.lua">Save</button>
-            <button id="clear-code" type="button">Clear code</button>
+            <button id="repl-run" type="button">Run ↵</button>
           </div>
-          <textarea id="script" spellcheck="false" wrap="off" aria-label="script.lua"></textarea>
+          <div id="legacy-code" class="legacy-code" hidden>
+            <p>This project also has code that plays after all the keyframes (<span id="legacy-lines"></span> lines), from before the REPL.</p>
+            <div class="toolbar">
+              <button id="legacy-keyframe" type="button">Make it the last keyframe</button>
+              <button id="save-code" type="button" title="Download script.lua">Save it</button>
+              <button id="clear-code" type="button">Delete it</button>
+            </div>
+            <textarea id="script" spellcheck="false" wrap="off" aria-label="script.lua" rows="6"></textarea>
+          </div>
           <p class="hint api">
             <code>node(label, x, y, w?, h?)</code> <code>rect</code> <code>triangle</code> <code>text</code>
             <code>edge(a, b)</code> <code>arrow(a, b)</code> <code>color(id, c, dur?)</code>
             <code>move(id, x, y, dur?, "smooth"?)</code> <code>path(id, {{x, y}, …}, dur?)</code> <code>size(id, w, h, dur?, "smooth"?)</code>
-            <code>remove(id)</code> <code>wait(t)</code>
+            <code>remove(id)</code> <code>wait(t)</code> <code>finish()</code>
             <code>pos(id)</code> <code>neighbors(id)</code> <code>edge_of(a, b)</code>
           </p>
         </div>

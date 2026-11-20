@@ -24,14 +24,21 @@ export function luaString(s) {
 }
 
 export function isUsableName(s) {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) && !LUA_KEYWORDS.has(s) && !RESERVED.has(s);
+  return typeof s === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) && !LUA_KEYWORDS.has(s) && !RESERVED.has(s);
 }
 
-/** Variable name for each node: its label when that is a safe, unique Lua identifier. */
+/**
+ * Variable name for each node: the name typed for it in the REPL (nd.name), else its label, when that is
+ * a safe, unique Lua identifier.
+ */
 export function variableNames(scene) {
   const names = new Map(), used = new Set();
   const nodes = scene.nodes();
   for (const nd of nodes) {
+    if (isUsableName(nd.name) && !used.has(nd.name)) { names.set(nd.id, nd.name); used.add(nd.name); }
+  }
+  for (const nd of nodes) {
+    if (names.has(nd.id)) continue;
     if (isUsableName(nd.label) && !used.has(nd.label)) { names.set(nd.id, nd.label); used.add(nd.label); }
   }
   let k = 1;

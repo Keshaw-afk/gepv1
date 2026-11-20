@@ -6,7 +6,7 @@ plays in the player, and what gives the still frames, the animated SVG and the M
 
 - [How a program runs](#how-a-program-runs) · [Time](#time-only-wait-moves-the-clock) · [The canvas](#the-canvas)
 - **Create:** [node](#node) · [rect](#rect) · [triangle](#triangle) · [text](#text) · [edge](#edge) · [arrow](#arrow)
-- **Animate:** [move](#move) · [path](#path) · [color](#color) · [size](#size) · [remove](#remove) · [wait](#wait)
+- **Animate:** [move](#move) · [path](#path) · [color](#color) · [size](#size) · [remove](#remove) · [wait](#wait) · [finish](#finish)
 - **Ask:** [pos](#pos) · [neighbors](#neighbors) · [edge_of](#edge_of) · [print](#print)
 - [Colour names](#colour-names) · [Limits and the sandbox](#limits-and-the-sandbox) · [Error messages](#error-messages) · [A whole script](#a-whole-script-depth-first-search)
 
@@ -240,6 +240,21 @@ move(A, 500, 100, 1)
 move(B, 500, 260, 1)   -- together with A
 wait(1)
 color(A, "green")      -- after both moves
+```
+
+### finish
+
+`finish()`
+
+Waits until every change that has started has ended. Use it instead of working out a `wait` by
+hand. Each code keyframe from the REPL ends with it, so the next keyframe starts after everything in
+it has finished.
+
+```lua
+color(A, "red", 2)
+move(B, 500, 260, 1)
+finish()               -- the clock is now 2 s: the colour change has ended too
+color(B, "green")
 ```
 
 ## Ask

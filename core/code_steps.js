@@ -22,8 +22,9 @@ const isOne = (size) => { const z = sizeOf(size); return z.w === 1 && z.h === 1;
 /**
  * Returns { scene, steps }: the starting picture and the steps, with what the code did added.
  * The inputs are not changed. Throws ConvertError (or the code's own ScriptError).
+ * taken: steps whose ids are in use too (the ones after an insertion point), so new ids don't clash.
  */
-export function codeToSteps(fengari, scene, steps, script) {
+export function codeToSteps(fengari, scene, steps, script, { taken = steps } = {}) {
   const built = buildSteps(steps, scene);
   const stage = toStageLua(scene);
   const full = runProgram(fengari, { stage, steps: built.code, script });
@@ -36,7 +37,7 @@ export function codeToSteps(fengari, scene, steps, script) {
   for (const c of full.timeline.commands) if (c.op === 'create' && c.kind === 'edge') ends.set(c.id, [c.props.a, c.props.b]);
   const out = steps.map((s) => ({ ...s }));
   const pic = Scene.from(JSON.parse(JSON.stringify(scene)));
-  let k = Number(nextStepId(steps).slice(1));
+  let k = Number(nextStepId([...steps, ...taken]).slice(1));
   const target = (c) => ids.get(c.id);
 
   // commands that start together
@@ -55,6 +56,8 @@ export function codeToSteps(fengari, scene, steps, script) {
         const { label, shape, pos, size, color } = c.props;
         const id = pic.addNode(label, pos.x, pos.y, shape, size);
         pic.get(id).color = color;
+        const name = [...full.globals].find(([, v]) => v === c.id)?.[0];
+        if (name) pic.get(id).name = name; // the variable typed for it
         ids.set(c.id, id);
       } else if (c.op === 'create' && c.kind === 'edge') {
         const id = pic.addEdge(ids.get(c.props.a), ids.get(c.props.b), c.props.directed);
@@ -75,7 +78,8 @@ export function codeToSteps(fengari, scene, steps, script) {
       const id = `s${k++}`;
       ids.set(c.id, id);
       const { label, shape, pos, size } = c.props;
-      return { op: 'add', id, shape, label, x: pos.x, y: pos.y, ...(!isOne(size) && { size }) };
+      const name = [...full.globals].find(([, v]) => v === c.id)?.[0]; // the variable the code keeps it in
+      return { op: 'add', id, shape, label, x: pos.x, y: pos.y, ...(!isOne(size) && { size }), ...(name && { name }) };
     }
     if (c.op === 'create') {
       const id = `s${k++}`;
