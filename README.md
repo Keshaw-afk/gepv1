@@ -37,7 +37,7 @@ The page has two tabs: **Build → Result**.
    or line them up together (lining up never piles objects on top of each other). A selected object has
    handles: right edge = width, bottom edge = height, corner = both (Shift keeps the proportions); or
    type **W** and **H**. The label never stretches. Undo/redo (Ctrl+Z / Ctrl+Shift+Z), copy and paste,
-   arrow keys to nudge (at Start), and an optional snap-to-grid (G) are there too. Your work is autosaved
+   arrow keys to nudge (at Start), and an optional snap-to-grid (G) are there too, and a **coordinates** guide (the ∟ button: x and y on the canvas, and where the pointer is, for instructions like "draw a circle at (100, 180)"). Your work is autosaved
    in the browser; **New project** starts again. The **Code** tab in the panel is for loops and
    algorithms (DFS, BFS and others under **Load example…**); Run plays start → steps → code.
 2. **Result:** works in **frames**, the same frames as the MP4. Step with ‹ › or ←/→ (Shift: 10),

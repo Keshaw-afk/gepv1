@@ -19,7 +19,7 @@ and show every step of the process. Source notes: [`idea.txt`](idea.txt).
 - Lua API: `node`, `rect`, `triangle`, `text`, `edge`, `arrow`, `color`, `move` (linear or
   `"smooth"`), `size`, `remove`, `wait`, `pos`, `neighbors`, `edge_of`
 - **Editing comforts:** lasso and multi-select, group move, resize handle, align and spread, duplicate,
-  copy/paste, nudge, snap-to-grid, undo/redo and autosave (`web/history.js`, localStorage)
+  copy/paste, nudge, snap-to-grid, a coordinate guide (`opts.coords` in core/svg.js, editor only; remembered in localStorage `gepv1.coords`), undo/redo and autosave (`web/history.js`, localStorage)
 - In-page preview that works in **frames** (the MP4's frames), **moments** (frames where a change
   has just finished, with the step or line that made it) and a trace of every pipeline stage
 - Output: **MP4 video** (SVG frames encoded by ffmpeg), **animated SVG** (one self-playing file),

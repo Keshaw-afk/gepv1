@@ -122,6 +122,19 @@ const editor = new Editor($('editor'), {
 });
 for (const b of $$('[data-tool]')) b.addEventListener('click', () => editor.setTool(b.dataset.tool));
 $('snap').addEventListener('click', toggleSnap);
+// the coordinate guide: the numbers an instruction like "draw a circle at (100, 180)" means
+$('coords').addEventListener('click', () => {
+  editor.setCoords(!editor.coords);
+  $('coords').setAttribute('aria-pressed', String(editor.coords));
+  $('coords-at').hidden = true;
+  try { localStorage.setItem('gepv1.coords', editor.coords ? '1' : ''); } catch { /* no storage */ }
+});
+editor.onPointer = (x, y) => {
+  const at = $('coords-at');
+  at.hidden = x === null || !editor.coords;
+  if (!at.hidden) at.textContent = `(${x}, ${y})`;
+};
+try { if (localStorage.getItem('gepv1.coords')) $('coords').click(); } catch { /* no storage */ }
 function toggleSnap() {
   editor.setSnap(!editor.snap);
   $('snap').setAttribute('aria-pressed', String(editor.snap));

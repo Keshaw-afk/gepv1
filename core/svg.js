@@ -127,6 +127,7 @@ function arrowheadPolygon(a, b, color) {
  * opts.comment     a comment at the top, e.g. which frame this is (export)
  * opts.selected    id, or a Set / array of ids, to highlight (editor)
  * opts.grid        faint dots at the snap points (editor)
+ * opts.coords      a coordinate guide: lines every 50 px, numbers every 100 (editor)
  * opts.handle      show the resize handles (width, height, corner) of the one selected node (editor)
  * opts.lasso       [{x, y}, …] the free-hand loop being drawn to select several (editor)
  * opts.interactive add data-id attributes and wide invisible hit areas (editor)
@@ -134,6 +135,17 @@ function arrowheadPolygon(a, b, color) {
  * opts.fresh       id of an object that just appeared (editor: it pops in)
  * opts.trails      [[{x, y}, …]] faint dashed paths of moves (editor, Behaviour)
  */
+/** The editor's coordinate guide: (0, 0) top left, x to the right, y down; never exported. */
+function coordGuide() {
+  const W = CANVAS.width, H = CANVAS.height, out = ['<g class="coords" pointer-events="none" font-family="sans-serif" font-size="10" fill="#8a94a3">'];
+  for (let x = 50; x < W; x += 50) out.push(`<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="${x % 100 ? '#eef0f3' : '#dde1e7'}" stroke-width="1"/>`);
+  for (let y = 50; y < H; y += 50) out.push(`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="${y % 100 ? '#eef0f3' : '#dde1e7'}" stroke-width="1"/>`);
+  for (let x = 100; x < W; x += 100) out.push(`<text x="${x}" y="11" text-anchor="middle">${x}</text>`);
+  for (let y = 100; y < H; y += 100) out.push(`<text x="4" y="${y + 3.5}">${y}</text>`);
+  out.push('<text x="4" y="11">0</text>', `<text x="${W - 4}" y="11" text-anchor="end">x →</text>`, `<text x="4" y="${H - 5}">y ↓</text>`, '</g>');
+  return out;
+}
+
 export function renderSVG(state, opts = {}) {
   const o = { ...DEFAULT_OUTPUT, ...opts.output };
   const ex = !!opts.export;
@@ -151,6 +163,8 @@ export function renderSVG(state, opts = {}) {
     body.push(`<defs><pattern id="gepv1-grid" width="${GRID}" height="${GRID}" patternUnits="userSpaceOnUse">${dot(0, 0)}${dot(GRID, 0)}${dot(0, GRID)}${dot(GRID, GRID)}</pattern></defs>`,
       `<rect width="${CANVAS.width}" height="${CANVAS.height}" fill="url(#gepv1-grid)" pointer-events="none"/>`);
   }
+
+  if (opts.coords && !ex) body.push(...coordGuide());
 
   for (const pts of opts.trails ?? []) {
     const to = pts.at(-1);

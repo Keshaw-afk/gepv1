@@ -94,13 +94,18 @@ export class Editor {
     this.sel = new Set(); // selected ids
     this.fresh = null; // id that just appeared (pops in)
     this.snap = false; // snap to the grid
+    this.coords = false; // show the coordinate guide and where the pointer is
     this.recording = false; // Record mode: show the shape of a drag (it becomes a curved move)
     this.clipboard = null; // { nodes, edges, pastes }
     this.drag = null;
     Object.assign(this, callbacks);
 
     container.addEventListener('pointerdown', (e) => this.down(e));
-    container.addEventListener('pointermove', (e) => this.move(e));
+    container.addEventListener('pointermove', (e) => {
+      if (this.coords && this.el.querySelector('svg')) { const q = this.point(e); this.onPointer?.(Math.round(q.x), Math.round(q.y)); }
+      this.move(e);
+    });
+    container.addEventListener('pointerleave', () => this.onPointer?.(null));
     container.addEventListener('pointerup', (e) => this.up(e));
     container.addEventListener('contextmenu', (e) => e.preventDefault());
     container.addEventListener('dblclick', (e) => {
@@ -138,6 +143,11 @@ export class Editor {
     this.onTool?.(tool);
   }
 
+  setCoords(on) {
+    this.coords = !!on;
+    this.render();
+  }
+
   setSnap(on) {
     this.snap = !!on;
     this.render();
@@ -159,7 +169,7 @@ export class Editor {
     }
     this.el.innerHTML = renderSVG(state, {
       interactive: true, selected: this.sel, handle: !d || d.mode === 'resize', ghost: d?.ghost, fresh: this.fresh,
-      lasso: d?.mode === 'lasso' ? lassoRegion(d.path) : null, grid: this.snap,
+      lasso: d?.mode === 'lasso' ? lassoRegion(d.path) : null, grid: this.snap, coords: this.coords,
       trails: this.mode === 'behaviour' ? [...this.trails, ...extraTrails] : null,
     });
   }

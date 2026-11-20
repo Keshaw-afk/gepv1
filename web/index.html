@@ -41,6 +41,8 @@
         <span class="sep" aria-hidden="true"></span>
         <button type="button" id="undo" title="Undo (Ctrl+Z)" aria-label="undo" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 5L4 8.5 7.5 12M4.5 8.5H12a3.5 3.5 0 010 7H9"/></svg></button>
         <button type="button" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="redo" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 5L16 8.5 12.5 12M15.5 8.5H8a3.5 3.5 0 000 7h3"/></svg></button>
+        <button type="button" id="coords" aria-pressed="false" title="Coordinates: show x and y on the canvas" aria-label="coordinates"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3v13h13M4 8h2M4 12h2M8 16v-2M12 16v-2"/></svg></button>
+        <span id="coords-at" class="coords-at" hidden></span>
         <button type="button" id="snap" aria-pressed="false" title="Snap to a grid (G)" aria-label="snap to grid"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h.01M10 4h.01M16 4h.01M4 10h.01M10 10h.01M16 10h.01M4 16h.01M10 16h.01M16 16h.01" stroke-width="2.6"/></svg></button>
       </div>
       <div id="editor" class="canvas editor"></div>

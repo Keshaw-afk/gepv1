@@ -63,6 +63,7 @@ h1 { margin: 0; font-size: 1.3rem; }
 /* ---------- Tools: one row of icons above the canvas ---------- */
 .tools { display: flex; align-items: center; gap: 2px; margin-bottom: 8px; padding: 3px; width: max-content; max-width: 100%;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.coords-at { min-width: 6.5em; font: 0.8rem ui-monospace, monospace; color: var(--muted); text-align: center; align-self: center; }
 .tools button { display: grid; place-items: center; width: 34px; height: 30px; padding: 0; border: none; border-radius: 7px;
   background: none; color: var(--muted); transition: background 0.12s, color 0.12s, transform 0.12s; }
 .tools button:hover { color: var(--text); background: var(--bg); }
