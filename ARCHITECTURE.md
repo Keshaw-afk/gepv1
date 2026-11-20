@@ -15,9 +15,10 @@ and show every step of the process. Source notes: [`idea.txt`](idea.txt).
   drag and drop the starting picture, then save the stage
 - **GUI steps:** build behaviour without code: colour, move, pause, and objects that appear,
   connect, resize and disappear while it plays; in sequence or together
-- Shapes: `circle`, `rect`, `triangle`, `text`; lines and arrows between them
-- Lua API: `node`, `rect`, `triangle`, `text`, `edge`, `arrow`, `color`, `move` (linear or
-  `"smooth"`), `size`, `remove`, `wait`, `pos`, `neighbors`, `edge_of`
+- Shapes: `circle`, `rect`, `triangle`, `text`, `cell` (a table cell); lines and arrows between them
+- Lua API: `node`, `rect`, `triangle`, `text`, `cell`, `grid`, `edge`, `arrow`, `color`, `label`,
+  `move` (linear or `"smooth"`), `path`, `size`, `remove`, `wait`, `finish`, `pos`, `neighbors`, `edge_of`
+- Maths in labels: `$…$` with LaTeX-style symbols, subscripts and superscripts (`core/labels.js`)
 - **Editing comforts:** lasso and multi-select, group move, resize handle, align and spread, duplicate,
   copy/paste, nudge, snap-to-grid, a coordinate guide (`opts.coords` in core/svg.js, editor only; remembered in localStorage `gepv1.coords`), undo/redo and autosave (`web/history.js`, localStorage)
 - In-page preview that works in **frames** (the MP4's frames), **moments** (frames where a change
@@ -371,9 +372,12 @@ node(label, x, y)       -- create a circle with a text label; returns id
 rect(label, x, y)       -- a rounded rectangle with a label
 triangle(label, x, y)   -- a triangle with a label
 text(words, x, y)       -- just text (color() colours the text)
+cell(label, x, y)       -- a table cell: white, square corners, 40 × 30
+grid(rows, cols, x, y, w?, h?) -- a table of empty cells, (x, y) its top-left corner; returns t, t[r][c] a cell
 edge(a, b)              -- create a line between two objects; returns id
 arrow(a, b)             -- a line with an arrowhead in the middle, pointing from a to b
 color(id, c, dur?)      -- animate colour to c ("red", "#ff0000", ...)
+label(id, text)         -- the label (or a text's words) changes at once; $…$ is maths (core/labels.js)
 move(id, x, y, dur?, ease?)  -- animate position to (x, y); ease "linear" (default) or "smooth"
 path(id, {{x, y}, …}, dur?, ease?) -- a curved move from where it is through the points, smooth, at even speed
 remove(id)              -- the object disappears (a node takes its lines with it)

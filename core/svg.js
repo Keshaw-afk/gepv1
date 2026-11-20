@@ -15,6 +15,7 @@
 import { CANVAS, GRID } from './scene.js';
 import { contrastText, parseColor, toHex } from './colors.js';
 import { DEFAULT_OUTPUT } from './output.js';
+import { labelMarkup, labelSpace } from './labels.js';
 import { RADIUS, FONT_SIZE, halfSize, labelDy, outline, defaultColor, sizeOf, labelScale, isUniform } from './shapes.js';
 
 export const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
@@ -198,11 +199,11 @@ export function renderSVG(state, opts = {}) {
     const shape = nd.shape ?? 'circle';
     const fill = fillOf(nd);
     const dy = labelDy(shape);
-    const label = esc(nd.label);
+    const label = labelMarkup(nd.label, esc), space = labelSpace(nd.label);
     if (ex) {
       const lines = [`<g id="${esc(ids.get(nd.id))}" class="node ${shape}" transform="${placement(nd.x, nd.y, nd.size)}">`];
       if (shape !== 'text') lines.push(`  ${outline(shape, ` fill="${fill}"${outlineScale(nd.size)}`)}`);
-      lines.push(`  <text y="${dy}"${labelTransform(nd.size)} fill="${labelFill(shape, nd.color)}">${label}</text>`, '</g>');
+      lines.push(`  <text y="${dy}"${labelTransform(nd.size)}${space} fill="${labelFill(shape, nd.color)}">${label}</text>`, '</g>');
       body.push(...lines);
       continue;
     }
@@ -223,7 +224,7 @@ export function renderSVG(state, opts = {}) {
     } else {
       parts.push(outline(shape, ` fill="${fill}" stroke="#333333" stroke-width="2"${outlineScale(nd.size)}${data}`));
     }
-    parts.push(`<text y="${dy}"${labelTransform(nd.size)} text-anchor="middle" font-family="${o.font}" font-size="${FONT_SIZE}" font-weight="bold" fill="${labelFill(shape, nd.color)}" pointer-events="none">${label}</text>`);
+    parts.push(`<text y="${dy}"${labelTransform(nd.size)}${space} text-anchor="middle" font-family="${o.font}" font-size="${FONT_SIZE}" font-weight="bold" fill="${labelFill(shape, nd.color)}" pointer-events="none">${label}</text>`);
     // the pop-in class goes on an inner group: a CSS transform on the outer one would replace its translate
     body.push(`<g transform="${placement(nd.x, nd.y, nd.size)}">${cls ? `<g${cls}>${parts.join('')}</g>` : parts.join('')}</g>`);
   }

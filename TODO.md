@@ -44,6 +44,7 @@ Usability work is judged by how well it serves those three.
 - [x] Stage and Behaviour merged into one Build tab: Start row + steps, insert steps at any point.
 - [x] Arrange / Record modes; curved moves (`path()`), recorded from a bent drag.
 - [x] Keyframes in Record: changes play together until + New keyframe (always at the end).
+- [x] Tables (`cell`, `grid`), `label(id, text)` and maths in labels (`$…$`, core/labels.js); exact in the animated SVG (check case `labels`).
 - [x] Released as v3.6.0 (the user chose the number; tagged locally).
 - [x] Each keyframe shows only its own move trails; removed objects leave none.
 - [x] Delete a whole keyframe: Delete in the REPL log, an emptied box while editing, or × on the keyframe row.

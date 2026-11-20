@@ -69,6 +69,18 @@ The full Lua API, with examples, is in [docs/LUA_API.md](docs/LUA_API.md). In co
 `remove(id)` makes it disappear and `size(id, w, h, dur)` makes a node wider and/or taller about its
 centre (factors 0.25 to 5; `size(id, 2)` = both ×2; `rect("A", x, y, 3, 1)` starts stretched). Sizes show in frames, the animated SVG and the MP4.
 
+For academic animations:
+
+- **Tables:** `t = grid(rows, cols, x, y)` makes a table of cells (`t[r][c]`, from 1; `cell(label, x, y)`
+  is one cell). Fill it with `label(t[r][c], "3")` and highlight with `color(t[r][c], "yellow")`.
+- **Changing values:** `label(id, text)` changes any shape's label, or a text's words, at once: counters,
+  variables, table entries.
+- **Maths in labels:** text between `$` signs is maths, LaTeX-style: `[[$c_{i,j} = c_{i-1,j-1} + 1$]]`,
+  `[[$x^2 \le n$]]`, `\times`, `\nwarrow`, Greek letters, and shortcuts like `<=` and `->`. Write it in
+  `[[…]]` strings, since Lua reads `"\t…"` as a tab. Symbols, subscripts and superscripts only.
+- **Example:** `examples/lcs.lua` fills the dynamic-programming table of the longest common
+  subsequence and traces the answer back (Code → Example… → LCS table).
+
 ## Use it with an AI
 
 GEPV1 is aimed at **academic animations** (diagrams of circles, boxes, triangles, text, lines and

@@ -149,7 +149,7 @@ function toggleSnap() {
 /** "Circle", "Rectangle", …, "Line", "Arrow". */
 function kindName(obj) {
   if (obj.kind === 'edge') return obj.directed ? 'Arrow' : 'Line';
-  return { circle: 'Circle', rect: 'Rectangle', triangle: 'Triangle', text: 'Text' }[obj.shape ?? 'circle'];
+  return { circle: 'Circle', rect: 'Rectangle', triangle: 'Triangle', text: 'Text', cell: 'Cell' }[obj.shape ?? 'circle'];
 }
 
 // The selection controls: what is selected, its colour, size, arrangement, duplicate, delete.
@@ -586,6 +586,8 @@ function describeChange(name, c) {
   } else if (c.op === 'size') {
     const z = sizeOf(c.size), f = (v) => Number(v.toFixed(2));
     what.append(z.w === z.h ? `size → ×${f(z.w)}` : `size → width ×${f(z.w)}, height ×${f(z.h)}`);
+  } else if (c.op === 'label') {
+    what.append('label → ', el('code', null, c.label));
   } else if (c.op === 'remove') {
     what.append('disappears');
   } else {
@@ -1150,6 +1152,7 @@ function changeOf(c) {
   if (c.op === 'create') return { op: 'create', kind: c.kind === 'edge' ? (c.props.directed ? 'arrow' : 'line') : null };
   if (c.op === 'remove') return { op: 'remove' };
   if (c.prop === 'size') return { op: 'size', size: c.value };
+  if (c.prop === 'label') return { op: 'label', label: c.value };
   if (c.path) return { op: 'path', points: c.path };
   return c.prop === 'color' ? { op: 'color', color: c.value } : { op: 'move', x: c.value.x, y: c.value.y };
 }

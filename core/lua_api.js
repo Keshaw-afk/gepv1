@@ -9,7 +9,7 @@
 import { Scene, DEFAULT_EDGE_COLOR } from './scene.js';
 import { Timeline, toMs } from './timeline.js';
 import { parseColor } from './colors.js';
-import { defaultColor, SIZE } from './shapes.js';
+import { defaultColor, SIZE, CELL } from './shapes.js';
 import { smoothPath, pointAlong } from './paths.js';
 import { EASES, ease } from './easing.js';
 
@@ -19,8 +19,9 @@ const HOOK_EVERY = 100_000;
 const MAX_COMMANDS = 50_000;
 
 // Every global the API defines (generated variable names must never shadow these).
-export const API_NAMES = ['node', 'rect', 'triangle', 'text', 'edge', 'arrow', 'color', 'move', 'remove',
-  'size', 'path', 'wait', 'finish', 'pos', 'neighbors', 'edge_of'];
+export const API_NAMES = ['node', 'rect', 'triangle', 'text', 'cell', 'grid', 'edge', 'arrow', 'color', 'label',
+  'move', 'remove', 'size', 'path', 'wait', 'finish', 'pos', 'neighbors', 'edge_of'];
+const MAX_GRID_CELLS = 400;
 
 export class ScriptError extends Error {}
 
@@ -106,15 +107,21 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
   // stage: color(A, "red", 0)) becomes its starting colour, not a change in the timeline.
   const created = new Map(), coloured = new Set();
   let inStage = false;
-  const makeNode = (shape) => (L) => {
-    const label = to_jsstring(lauxlib.luaL_checkstring(L, 1));
-    const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
-    const w = lua.lua_isnoneornil(L, 4) ? 1 : checkSize(4);
-    const size = { w, h: lua.lua_isnoneornil(L, 5) ? w : checkSize(5) };
+  const createNode = (label, x, y, shape, size) => {
     const id = scene.addNode(label, x, y, shape, size);
     place.set(id, { from: { x, y }, to: { x, y }, t0: timeline.clockMs, dur: 0, ease: 'linear' });
     created.set(id, emit({ op: 'create', id, kind: 'node', props: { label, shape, pos: { x, y }, color: defaultColor(shape), size } }));
-    lua.lua_pushinteger(L, id);
+    return id;
+  };
+  // optional width and height factors at i, i + 1 (only the width: both ways)
+  const optSize = (i) => {
+    const w = lua.lua_isnoneornil(L, i) ? 1 : checkSize(i);
+    return { w, h: lua.lua_isnoneornil(L, i + 1) ? w : checkSize(i + 1) };
+  };
+  const makeNode = (shape) => (L) => {
+    const label = to_jsstring(lauxlib.luaL_checkstring(L, 1));
+    const x = lauxlib.luaL_checknumber(L, 2), y = lauxlib.luaL_checknumber(L, 3);
+    lua.lua_pushinteger(L, createNode(label, x, y, shape, optSize(4)));
     return 1;
   };
   const makeEdge = (directed) => (L) => {
@@ -131,6 +138,38 @@ export function runProgram(fengari, { stage = '', steps = '', script = '' }) {
     rect: makeNode('rect'),
     triangle: makeNode('triangle'),
     text: makeNode('text'),
+    cell: makeNode('cell'),
+    // grid(rows, cols, x, y, w?, h?): a table of empty cells, (x, y) its top-left corner; returns
+    // t with t[r][c] the cell in row r, column c (from 1)
+    grid(L) {
+      const rows = lauxlib.luaL_checkinteger(L, 1), cols = lauxlib.luaL_checkinteger(L, 2);
+      if (rows < 1 || cols < 1) fail('grid needs at least 1 row and 1 column');
+      if (rows * cols > MAX_GRID_CELLS) fail(`a grid has at most ${MAX_GRID_CELLS} cells`);
+      const x = lauxlib.luaL_checknumber(L, 3), y = lauxlib.luaL_checknumber(L, 4);
+      const size = optSize(5);
+      const cw = CELL.w * size.w, ch = CELL.h * size.h;
+      lua.lua_createtable(L, rows, 0);
+      for (let r = 1; r <= rows; r++) {
+        lua.lua_createtable(L, cols, 0);
+        for (let c = 1; c <= cols; c++) {
+          lua.lua_pushinteger(L, createNode('', x + (c - 0.5) * cw, y + (r - 0.5) * ch, 'cell', { ...size }));
+          lua.lua_rawseti(L, -2, c);
+        }
+        lua.lua_rawseti(L, -2, r);
+      }
+      return 1;
+    },
+    // label(id, text): a shape's label (or a text's words) changes at once
+    label(L) {
+      const id = checkObj(1, 'node');
+      if (lua.lua_type(L, 2) !== lua.LUA_TSTRING && lua.lua_type(L, 2) !== lua.LUA_TNUMBER) fail('label(id, text) needs the new text, e.g. label(A, "3")');
+      const text = to_jsstring(lauxlib.luaL_checkstring(L, 2));
+      scene.get(id).label = text;
+      const birth = created.get(id);
+      if (inStage && birth?.t === timeline.clockMs) { birth.props.label = text; return 0; } // the starting label
+      emit({ op: 'set', id, prop: 'label', value: text, dur: 0 });
+      return 0;
+    },
     edge: makeEdge(false),
     arrow: makeEdge(true),
     color(L) {

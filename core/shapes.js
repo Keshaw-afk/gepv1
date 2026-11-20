@@ -5,11 +5,15 @@
 //   rect      rect(label, x, y)       a rounded rectangle with the label inside
 //   triangle  triangle(label, x, y)   a triangle pointing up, label in its wider lower part
 //   text      text("Hello", x, y)     just the text; colour() colours the text itself
+//   cell      cell(label, x, y)       a table cell: a square-cornered white box (grid() makes a table of them)
 
-export const SHAPES = ['circle', 'rect', 'triangle', 'text'];
+import { labelText } from './labels.js';
+
+export const SHAPES = ['circle', 'rect', 'triangle', 'text', 'cell'];
 
 export const RADIUS = 24;                       // circle
 export const RECT = { w: 64, h: 40, rx: 6 };    // rect
+export const CELL = { w: 40, h: 30 };           // cell (a table cell; no rounded corners)
 export const TRIANGLE = '0,-30 28,18 -28,18';   // triangle points (centroid near the origin)
 export const FONT_SIZE = 17;
 
@@ -30,7 +34,7 @@ export const isUniform = (s) => { const z = sizeOf(s); return z.w === z.h; };
 export const sameSize = (a, b) => { const x = sizeOf(a), y = sizeOf(b); return x.w === y.w && x.h === y.h; };
 
 /** Default fill: grey shapes, dark text (a grey caption would be hard to read). */
-export const defaultColor = (shape) => (shape === 'text' ? '#333333' : '#cccccc');
+export const defaultColor = (shape) => (shape === 'text' ? '#333333' : shape === 'cell' ? '#ffffff' : '#cccccc');
 
 /** Where the label's baseline sits, relative to the centre. */
 export const labelDy = (shape) => (shape === 'triangle' ? 12 : 6);
@@ -40,8 +44,9 @@ export function halfSize(shape, label = '', size = 1) {
   const z = shape === 'text' ? { w: labelScale(size), h: labelScale(size) } : sizeOf(size);
   let h = { x: RADIUS, y: RADIUS };
   if (shape === 'rect') h = { x: RECT.w / 2, y: RECT.h / 2 };
+  else if (shape === 'cell') h = { x: CELL.w / 2, y: CELL.h / 2 };
   else if (shape === 'triangle') h = { x: 28, y: 30 };
-  else if (shape === 'text') h = { x: Math.max(12, String(label).length * 5), y: 11 };
+  else if (shape === 'text') h = { x: Math.max(12, labelText(label).length * 5), y: 11 };
   return { x: h.x * z.w, y: h.y * z.h };
 }
 
@@ -58,10 +63,11 @@ export function hits(shape, label, x, y, p, size = 1) {
 /** The outline element of a shape at the origin (nothing for text), e.g. <circle r="24" …/>. */
 export function outline(shape, attrs) {
   if (shape === 'rect') return `<rect x="${-RECT.w / 2}" y="${-RECT.h / 2}" width="${RECT.w}" height="${RECT.h}" rx="${RECT.rx}"${attrs}/>`;
+  if (shape === 'cell') return `<rect x="${-CELL.w / 2}" y="${-CELL.h / 2}" width="${CELL.w}" height="${CELL.h}"${attrs}/>`;
   if (shape === 'triangle') return `<polygon points="${TRIANGLE}"${attrs}/>`;
   if (shape === 'text') return '';
   return `<circle r="${RADIUS}"${attrs}/>`;
 }
 
 /** The SVG element name of the outline (what colour animations target). */
-export const outlineTag = (shape) => ({ circle: 'circle', rect: 'rect', triangle: 'polygon' })[shape] ?? 'text';
+export const outlineTag = (shape) => ({ circle: 'circle', rect: 'rect', cell: 'rect', triangle: 'polygon' })[shape] ?? 'text';

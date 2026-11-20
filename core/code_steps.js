@@ -100,6 +100,7 @@ export function codeToSteps(fengari, scene, steps, script, { taken = steps } = {
     const ease = c.ease && c.ease !== 'linear' ? { ease: c.ease } : {};
     if (c.prop === 'color') return { op: 'color', target: target(c), color: c.value, dur: c.dur };
     if (c.prop === 'size') return { op: 'size', target: target(c), size: c.value, dur: c.dur, ...ease };
+    if (c.prop === 'label') throw new ConvertError(`Line ${line} changes a label; steps can't do that yet, so it is kept as code.`);
     if (c.dur === 0) throw new ConvertError(`Line ${line} moves ${c.name} at once (0 s). Steps can't do an instant move: give it a duration, or keep it as code.`);
     if (c.path) return { op: 'path', target: target(c), points: c.via.map((p) => ({ ...p })), dur: c.dur, ...ease };
     return { op: 'move', target: target(c), x: c.value.x, y: c.value.y, dur: c.dur, ...ease };

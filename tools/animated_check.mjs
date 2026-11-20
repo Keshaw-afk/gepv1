@@ -8,7 +8,7 @@
 // For each case below it bakes the expected state (from sceneAt) every 23 ms into a page together
 // with the animated SVG. The page pauses each SVG, seeks with setCurrentTime and compares, for every
 // object: position (the group's transform), fill/stroke colour, arrow points, line ends and
-// scale (size) and visibility. The result is shown on the page and stored in window.checkResult / document.title.
+// scale (size), visibility and the label shown (exactly one version of it). The result is shown on the page and stored in window.checkResult / document.title.
 //
 // Expected today: see HANDOFF.md §4 (the only known failures are at a command's exact start instant). That is exactly a
 // command's start instant, where Chrome's clock is half a millisecond behind (0.5 ms later it
@@ -21,6 +21,7 @@ import { runProgram } from '../core/lua_api.js';
 import { sceneAt } from '../core/player.js';
 import { timelineIds, paint } from '../core/svg.js';
 import { renderAnimatedSVG } from '../core/animated_svg.js';
+import { labelText } from '../core/labels.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const ex = (f) => fs.readFileSync(path.join(root, 'examples', f), 'utf8');
@@ -49,6 +50,14 @@ const CASES = {
     stage: 'A = node("A", 120, 120, 2, 1) B = rect("B", 400, 120) C = triangle("C", 300, 260, 1, 2) T = text("Hi", 520, 300) edge(A, B) arrow(B, C)',
     script: 'size(A, 1, 2, 1); size(B, 3, 1, 0.8, "smooth"); wait(0.3); size(C, 2, 0.5, 0.7, "smooth"); size(T, 3, 1, 0.5); wait(0.9); size(B, 1, 1.5, 0); move(B, 300, 100, 0.5); wait(0.6)',
   },
+  // labels that change: back to an earlier one, twice at one moment, with maths, on a late object that
+  // is removed, while its colour flips the text white, while it grows, on text, and in a grid
+  labels: {
+    stage: 'A = node("A", 100, 100) B = rect("0", 300, 100) T = text("start", 500, 60) label(B, "1") g = grid(2, 3, 380, 220)',
+    script: 'label(A, "x"); color(A, "navy", 0.6); wait(0.3); label(A, "A"); label(B, [[$c_{i,j} \\le 2$]]); size(B, 2, 1.5, 0.8); wait(0.3); label(A, "x")\n'
+      + 'P = node("p", 200, 280); label(P, [[$x^2$]]); label(T, "middle"); color(T, "red", 0.4); label(g[1][1], "0"); label(g[2][3], [[$\\nwarrow 1$]]); color(g[2][3], "yellow", 0.3); wait(0.4)\n'
+      + 'label(P, "q"); label(P, "r"); move(P, 300, 300, 0.5); wait(0.3); remove(P); label(B, "end"); label(g[1][1], "1"); wait(0.5)',
+  },
 };
 
 const data = {};
@@ -61,7 +70,7 @@ for (const [name, prog] of Object.entries(CASES)) {
     const at = new Map(st.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
     samples.push({
       t,
-      nodes: st.nodes.map((n) => ({ id: ids.get(n.id), x: n.x, y: n.y, size: n.size, fill: paint(n.color), shape: n.shape })),
+      nodes: st.nodes.map((n) => ({ id: ids.get(n.id), x: n.x, y: n.y, size: n.size, fill: paint(n.color), shape: n.shape, label: labelText(n.label) })),
       edges: st.edges.map((e) => ({ id: ids.get(e.id), directed: e.directed, a: at.get(e.a), b: at.get(e.b), stroke: paint(e.color) })),
     });
   }
@@ -97,7 +106,7 @@ function check(data) {
         checks++;
         if (Math.abs(m.e - n.x) > 0.6 || Math.abs(m.f - n.y) > 0.6) bad.push(`${s.t} ${n.id} pos ${m.e.toFixed(2)},${m.f.toFixed(2)} vs ${n.x.toFixed(2)},${n.y.toFixed(2)}`);
         // size: the outline scales by width and height, the label by the smaller of the two
-        const ol = g.querySelector('circle,rect,polygon'), tx = g.querySelector('text');
+        const ol = g.querySelector('circle,rect,polygon'), tx = g.querySelector('g.label') ?? g.querySelector('text');
         const want = { w: n.size.w, h: n.size.h, m: Math.min(n.size.w, n.size.h) };
         const got = { w: ol ? tf(ol).a : want.w, h: ol ? tf(ol).d : want.h, m: tf(tx).a };
         checks++;
@@ -106,6 +115,10 @@ function check(data) {
         const f = hex(getComputedStyle(fillEl).fill);
         checks++;
         if (!near(f, n.fill)) bad.push(`${s.t} ${n.id} fill ${f} vs ${n.fill}`);
+        // the label: exactly one version shown, with the right text
+        const shown = [...g.querySelectorAll('text')].filter((t) => getComputedStyle(t).display !== 'none');
+        checks++;
+        if (shown.length !== 1 || shown[0].textContent !== n.label) bad.push(`${s.t} ${n.id} label ${JSON.stringify(shown.map((t) => t.textContent))} vs ${JSON.stringify(n.label)}`);
       }
       for (const e of s.edges) {
         visible.add(e.id);

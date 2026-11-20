@@ -15,6 +15,9 @@
 //   arrow         -> its points (start, middle, end) sampled every 10 ms while either end moves,
 //                    and set at once when an end jumps
 //   create at t>0 -> hidden until t; remove -> hidden from t (<set attributeName="visibility">)
+//   label change  -> one <text> per stretch of time a label lasts, inside a <g class="label"> that
+//                    carries the label's fill and scale; each is shown and hidden with
+//                    <set attributeName="display"> (display, not visibility: a hidden object stays hidden)
 // When two animations overlap, the one that starts later wins, which matches the player.
 // Ids, classes and <style> are the same as a still frame's (export flavour in svg.js).
 
@@ -24,6 +27,7 @@ import { DEFAULT_OUTPUT } from './output.js';
 import { smilEase, ease } from './easing.js';
 import { outline, outlineTag, labelDy, sizeOf, labelScale } from './shapes.js';
 import { pointAlong, vertexFractions } from './paths.js';
+import { labelMarkup, labelSpace } from './labels.js';
 import { paint, esc, n, n3, timelineIds, svgOpen, styleBlock, arrowDefs, backgroundRect, translate, arrowPoints, labelFill, ARROWHEAD_ID } from './svg.js';
 
 const SAMPLE_MS = 10;
@@ -104,6 +108,11 @@ export function renderAnimatedSVG(timeline, output = {}) {
 
   const all = tweens(timeline);
   const moves = all.filter((tw) => tw.prop === 'pos');
+  const relabels = new Map(); // node id -> [{ t, label }] in time order
+  for (const tw of all.filter((x) => x.prop === 'label')) {
+    if (!relabels.has(tw.id)) relabels.set(tw.id, []);
+    relabels.get(tw.id).push({ t: tw.t0, label: tw.to });
+  }
   for (const [i, tw] of all.entries()) {
     const shape = shapeOf.get(tw.id);
     if (tw.prop === 'color') {
@@ -217,7 +226,21 @@ export function renderAnimatedSVG(timeline, output = {}) {
       body.push(...el(shapeEl, tag, kids.outline.get(c.id) ?? [], '  '));
     }
     const lt = scaled ? ` transform="scale(${n3(labelScale(z))})"` : '';
-    body.push(`  <text y="${labelDy(shape)}"${lt} fill="${labelFill(shape, c.props.color)}">${esc(c.props.label)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
+    const fill = ` fill="${labelFill(shape, c.props.color)}"`, dy = labelDy(shape);
+    const changes = relabels.get(c.id);
+    if (!changes) {
+      body.push(`  <text y="${dy}"${lt}${labelSpace(c.props.label)}${fill}>${labelMarkup(c.props.label, esc)}${(kids.text.get(c.id) ?? []).join('')}</text>`);
+    } else {
+      // every stretch of time with one label; one that lasts no time (changed again at once) is left out
+      const spans = [{ t: c.t, label: c.props.label }, ...changes];
+      const keep = spans.filter((x, k) => k === spans.length - 1 || spans[k + 1].t > x.t);
+      body.push(`  <g class="label"${lt}${fill}>`, ...(kids.text.get(c.id) ?? []).map((k) => `    ${k}`));
+      keep.forEach((x, k) => {
+        const sets = [...(k ? [set('display', 'inline', x.t)] : []), ...(k < keep.length - 1 ? [set('display', 'none', keep[k + 1].t)] : [])];
+        body.push(`    <text y="${dy}"${k ? ' display="none"' : ''}${labelSpace(x.label)}>${labelMarkup(x.label, esc)}${sets.join('')}</text>`);
+      });
+      body.push('  </g>');
+    }
     body.push('</g>');
   }
   out.push(...body.map((l) => '  ' + l), '</svg>');

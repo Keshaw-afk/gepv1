@@ -5,10 +5,10 @@ example here runs as it stands. Each call becomes a command on the timeline. Tha
 plays in the player, and what gives the still frames, the animated SVG and the MP4.
 
 - [How a program runs](#how-a-program-runs) · [Time](#time-only-wait-moves-the-clock) · [The canvas](#the-canvas)
-- **Create:** [node](#node) · [rect](#rect) · [triangle](#triangle) · [text](#text) · [edge](#edge) · [arrow](#arrow)
-- **Animate:** [move](#move) · [path](#path) · [color](#color) · [size](#size) · [remove](#remove) · [wait](#wait) · [finish](#finish)
+- **Create:** [node](#node) · [rect](#rect) · [triangle](#triangle) · [text](#text) · [cell](#cell) · [grid](#grid) · [edge](#edge) · [arrow](#arrow)
+- **Animate:** [move](#move) · [path](#path) · [color](#color) · [label](#label) · [size](#size) · [remove](#remove) · [wait](#wait) · [finish](#finish)
 - **Ask:** [pos](#pos) · [neighbors](#neighbors) · [edge_of](#edge_of) · [print](#print)
-- [Colour names](#colour-names) · [Limits and the sandbox](#limits-and-the-sandbox) · [Error messages](#error-messages) · [A whole script](#a-whole-script-depth-first-search)
+- [Maths in labels](#maths-in-labels) · [Colour names](#colour-names) · [Limits and the sandbox](#limits-and-the-sandbox) · [Error messages](#error-messages) · [A whole script](#a-whole-script-depth-first-search)
 
 ## How a program runs
 
@@ -57,6 +57,7 @@ A position is the centre of the shape. The coordinates button in the Build toolb
 | box (`rect`) | 64 × 40 px, rounded corners | light grey |
 | `triangle` | 56 × 48 px | light grey |
 | `text` | 17 px bold letters | dark grey `#333333` |
+| `cell` | 40 × 30 px, square corners | white `#ffffff` |
 | line, arrow | between two shapes, follows them | grey `#888888` |
 
 ## Create
@@ -113,6 +114,40 @@ Just text, with no shape around it, for titles, notes and values. `color` colour
 
 ```lua
 title = text("Bubble sort", 320, 30)
+```
+
+### cell
+
+`cell(label, x, y, w?, h?) → id`
+
+A table cell: a white box with square corners and a label. It takes the same arguments as
+[`node`](#node). Cells side by side share their borders, so they look like a table; [`grid`](#grid)
+makes a whole table at once.
+
+```lua
+c = cell("7", 320, 180)
+```
+
+### grid
+
+`grid(rows, cols, x, y, w?, h?) → t`
+
+A table of empty cells, with its top-left corner at `(x, y)`. It returns a Lua table: `t[r][c]` is
+the cell in row `r` and column `c`, counting from 1. Fill it with [`label`](#label) and highlight
+cells with [`color`](#color).
+
+| Argument | Meaning |
+|---|---|
+| `rows, cols` | how many rows and columns (at most 400 cells) |
+| `x, y` | the top-left corner, in pixels |
+| `w, h` | optional cell size factors, as for [`node`](#node) (a cell is 40 × 30 px at 1) |
+
+```lua
+t = grid(3, 4, 240, 120)          -- 3 rows of 4 cells, 160 × 90 px
+for c = 1, 4 do label(t[1][c], c) end
+color(t[2][3], "yellow")
+wait(0.5)
+label(t[2][3], "x")
 ```
 
 ### edge
@@ -199,6 +234,24 @@ color(A, "#1e88e5", 2)
 
 In stage.lua, `color(A, "red", 0)` straight after creating A sets its starting colour. That's how
 the editor saves coloured shapes.
+
+### label
+
+`label(id, text)`
+
+Changes the label of a shape, or the words of a text, at once. `text` can be a string or a number,
+and can contain [maths](#maths-in-labels). Use it for values that change: a counter, a cell of a
+table, a variable.
+
+```lua
+count = text("0", 320, 40)
+for i = 1, 3 do
+  wait(0.5)
+  label(count, i)
+end
+```
+
+In stage.lua, `label(A, "x")` straight after creating A sets its starting label.
 
 ### size
 
@@ -314,6 +367,40 @@ doing.
 ```lua
 print("A is", A)      -- A is	1
 ```
+
+## Maths in labels
+
+The parts of a label between `$` signs are maths, written like LaTeX. They can have symbols,
+subscripts and superscripts; there are no fractions or other layout. Outside `$…$` a label is shown
+as written, and `\$` is a dollar sign.
+
+```lua
+text([[$c_{i,j} = c_{i-1,j-1} + 1$]], 320, 60)   -- c with subscript i,j …
+text([[$x^2 \le n \times m$]], 320, 100)          -- x², ≤ and ×
+text([[$a <= b$ and $i -> j$]], 320, 140)         -- ASCII shortcuts
+```
+
+**Write maths in long strings, `[[…]]`.** In an ordinary `"…"` string Lua reads a backslash as an
+escape: `"\le"` is an error and `"\times"` becomes a tab followed by "imes".
+
+| Write | For |
+|---|---|
+| `x_i`, `x_{i+1}` | a subscript (one character, or a `{group}`) |
+| `x^2`, `2^{n-1}` | a superscript |
+| `-` | a minus sign (−) |
+| `<=` `>=` `!=` | ≤ ≥ ≠ |
+| `->` `<-` `=>` `<=>` `+-` `...` | → ← ⇒ ⇔ ± … |
+| `\le \ge \ne \approx \equiv` | ≤ ≥ ≠ ≈ ≡ |
+| `\times \cdot \div \pm` | × · ÷ ± |
+| `\leftarrow \rightarrow \uparrow \downarrow \nwarrow \nearrow \Rightarrow \iff` | ← → ↑ ↓ ↖ ↗ ⇒ ⇔ |
+| `\in \notin \subset \subseteq \cup \cap \emptyset` | ∈ ∉ ⊂ ⊆ ∪ ∩ ∅ |
+| `\forall \exists \neg \land \lor` | ∀ ∃ ¬ ∧ ∨ |
+| `\sum \prod \int \sqrt \infty \partial` | ∑ ∏ ∫ √ ∞ ∂ |
+| `\lfloor \rfloor \lceil \rceil \langle \rangle \ldots` | ⌊ ⌋ ⌈ ⌉ ⟨ ⟩ … |
+| `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
+| `\,` `\quad` | a thin and a wide space |
+
+An unknown command is shown as typed, so a typing mistake is easy to see.
 
 ## Colour names
 

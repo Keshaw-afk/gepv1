@@ -52,7 +52,7 @@ export function variableNames(scene) {
 }
 
 /** The API call that makes each shape. */
-export const SHAPE_CALL = { circle: 'node', rect: 'rect', triangle: 'triangle', text: 'text' };
+export const SHAPE_CALL = { circle: 'node', rect: 'rect', triangle: 'triangle', text: 'text', cell: 'cell' };
 
 /** The optional size arguments of node(), rect(), …: '' (normal), ', 1.5' (both ways) or ', 2, 1'. */
 export function sizeArgs(size) {
