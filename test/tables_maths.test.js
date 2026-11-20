@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fengari from 'fengari';
-import { run } from './helpers.js';
+import { run, example } from './helpers.js';
 import { labelParts, labelText, labelMarkup } from '../core/labels.js';
 import { sceneAt } from '../core/player.js';
 import { renderSVG, esc } from '../core/svg.js';
@@ -77,4 +77,13 @@ test('code that changes a label stays a code keyframe; a grid at the start goes 
   const r = codeToSteps(fengari, new Scene(), [], 't = grid(1, 2, 100, 100)\nlabel(t[1][2], "5")');
   assert.deepEqual(r.scene.nodes().map((n) => [n.shape, n.label]), [['cell', ''], ['cell', '5']]);
   assert.equal(r.steps.length, 0);
+});
+
+test('the LCS example fills the textbook table and finds BCBA', () => {
+  const r = run('', example('lcs.lua'));
+  const end = sceneAt(r.timeline, r.timeline.durationMs);
+  const cells = end.nodes.filter((nd) => nd.shape === 'cell').map((nd) => nd.label);
+  assert.equal(cells.length, 9 * 8);
+  assert.deepEqual(cells.slice(8 * 8), ['B', '0', '↖1', '↑2', '↑2', '↑3', '↖4', '↑4'], 'the last row');
+  assert.ok(end.nodes.some((nd) => nd.label === 'LCS = BCBA  (length 4)'));
 });

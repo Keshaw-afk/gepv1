@@ -443,6 +443,9 @@ script ran too long (infinite loop?)
 
 ## A whole script: depth-first search
 
+(For tables and maths, see `examples/lcs.lua`: the dynamic-programming table of the longest common
+subsequence, filled cell by cell with `grid`, `label` and `color`, then traced back.)
+
 This is the Code tab's DFS example (`examples/dfs.lua`). It runs on whatever graph is drawn in
 Build, starting from `A`.
 

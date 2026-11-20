@@ -9,6 +9,7 @@ import { Scene, DEFAULT_EDGE_COLOR } from '../core/scene.js';
 import { sizeOf, defaultColor } from '../core/shapes.js';
 import { ARRANGE_KINDS } from '../core/arrange.js';
 import { sceneAt, frameTimes, tweens } from '../core/player.js';
+import { labelText } from '../core/labels.js';
 import { renderSVG, paint } from '../core/svg.js';
 import { renderAnimatedSVG } from '../core/animated_svg.js';
 import { formatTrace } from '../core/trace.js';
@@ -573,7 +574,7 @@ function describeChange(name, c) {
   const what = el('span', 'what');
   if (c.op === 'create' || c.op === 'add' || c.op === 'connect') what.append(el('i', 'op appear', '+'));
   if (c.op === 'remove') what.append(el('i', 'op disappear', '−'));
-  what.append(el('b', null, name), ' ');
+  what.append(el('b', null, labelText(name ?? '')), ' ');
   if (c.op === 'color') {
     const sw = el('i', 'dot');
     sw.style.background = paint(c.color);
@@ -587,7 +588,7 @@ function describeChange(name, c) {
     const z = sizeOf(c.size), f = (v) => Number(v.toFixed(2));
     what.append(z.w === z.h ? `size → ×${f(z.w)}` : `size → width ×${f(z.w)}, height ×${f(z.h)}`);
   } else if (c.op === 'label') {
-    what.append('label → ', el('code', null, c.label));
+    what.append('label → ', el('code', null, labelText(c.label)));
   } else if (c.op === 'remove') {
     what.append('disappears');
   } else {
