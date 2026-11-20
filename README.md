@@ -23,7 +23,9 @@ The page has two tabs: **Build → Result**.
    - **✎ Arrange:** place, drag, resize, colour and connect freely; **nothing is recorded**. At Start this
      is the starting picture. At a later step a change adjusts whatever already decides it there: the
      move or size step that put the object there (a curved move bends to its new end), the step that
-     added it, or the starting picture. New objects go into the starting picture.
+     added it, or the starting picture. A new object (or line, or paste) appears at the moment you are
+     looking at: at Start it is part of the starting picture, later it gets a keyframe of its own there.
+     (In Record too: an object added while a keyframe moves things appears when that keyframe ends.)
    - **● Record:** changes are recorded in **keyframes**. Everything you change goes into the current
      keyframe and plays together: drag A, drag B, colour C, and all three happen at once. Press **Next
      keyframe ▸** (or N) to start the next one; it plays after this one. Dragging the same object again

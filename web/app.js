@@ -26,7 +26,7 @@ const $ = (id) => document.getElementById(id);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const PALETTE = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'lightgrey'];
 const HINTS = {
-  arrange: 'Arrange: nothing is recorded · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
+  arrange: 'Arrange: changes adjust what is there · Click empty space to add a shape (it appears at the moment shown) · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   record: 'Record: changes go into the current keyframe and play together · N: next keyframe · Drag in a curve for a curved move · Drag again to carry on a move · Ctrl+Z: undo',
   start: 'The starting picture · Click empty space to add a shape · Draw a loop: select several · Drag: move · Handles: width, height, both (Shift keeps the shape) · Line or arrow tool (or Shift-drag): connect · Double-click: rename · Ctrl+Z: undo',
   steps: 'Every change here becomes a step · Click, or draw a loop to select · Pick a colour · Drag: record a move · Handles: resize · Shapes add objects · Ctrl+Z: undo',
@@ -99,7 +99,7 @@ const editor = new Editor($('editor'), {
     addSteps(list.map(({ id, size }) => ({ op: 'size', target: id, size })));
   },
   onAddObject: (shape, label, x, y) => {
-    if (!recording()) { // Arrange: it is part of the starting picture
+    if (!recording() && point === 0) { // Arrange at the start: it is part of the starting picture
       const id = editor.scene.addNode(label, x, y, shape);
       everythingChanged();
       editor.popIn(id);
@@ -109,7 +109,8 @@ const editor = new Editor($('editor'), {
     addSteps([{ op: 'add', id, shape, label, x, y }]);
     editor.popIn(id);
   },
-  onPaste: (plan) => (recording() ? pasteSteps(plan) : pasteOnStage(plan)),
+  // later than the start, even in Arrange, new things appear at that moment (not from 0 s)
+  onPaste: (plan) => (recording() || point > 0 ? pasteSteps(plan) : pasteOnStage(plan)),
   onConnect: (a, b, directed) => {
     if (!recording()) { connectUnrecorded(a, b, directed); return; }
     const id = nextStepId(steps);
@@ -186,7 +187,7 @@ function syncInspector() {
       : `<b>Recording</b> into keyframe ${keyframes(steps).filter((f) => steps[f.start].op !== 'wait' && f.end <= point).length}: everything you change plays together. <b>Next keyframe</b> (N) when it is done.`
     : point === 0
       ? '<b>Arranging</b> the starting picture: place, drag, resize and colour freely. Nothing is recorded.'
-      : `<b>Arranging</b> at ${where}: nothing is recorded; a change adjusts the step (or the starting picture) that put things there.`;
+      : `<b>Arranging</b> at ${where}: a change adjusts the step (or the starting picture) that put things there; a new shape appears at this moment.`;
 }
 
 // Arrange buttons: align to an edge or centre, spread evenly.
@@ -287,8 +288,17 @@ function adjustColors(ids, color) {
   everythingChanged();
 }
 
-/** Arrange: a line between two stage objects is part of the stage; otherwise it appears with the later one. */
+/**
+ * Arrange: a line between two stage objects, drawn at the start, is part of the stage; drawn later it
+ * appears at that moment; between objects that steps add, it appears with the later one.
+ */
 function connectUnrecorded(a, b, directed) {
+  if (point > 0) {
+    const id = nextStepId(steps);
+    addSteps([{ op: 'connect', id, a, b, directed }]);
+    editor.popIn(id);
+    return;
+  }
   if (editor.scene.isNode(a) && editor.scene.isNode(b)) {
     const id = editor.scene.addEdge(a, b, directed);
     everythingChanged();
@@ -395,7 +405,8 @@ let justAdded = new Set(); // the steps that slide into the list
  */
 function addSteps(list) {
   if (!list.length) return;
-  const r = recordSteps(steps, point, list, { join: !newKeyframe, dur: stepDur() });
+  // a shape or line added here appears at the moment the canvas shows, not at the start of a keyframe
+  const r = recordSteps(steps, point, list, { join: !newKeyframe, dur: stepDur(), appearAtEnd: true });
   steps = r.steps;
   point = r.point;
   newKeyframe = false;
@@ -417,13 +428,15 @@ $('clear-steps').addEventListener('click', () => { steps = []; stepsChanged(); }
 function pasteSteps(plan) {
   const changes = [];
   const push = (s) => changes.push(s);
+  let k = Number(nextStepId(steps).slice(1)); // one new id each (nextStepId only sees the steps so far)
+  const newId = () => `s${k++}`;
   const ids = plan.nodes.map((n) => {
-    const id = nextStepId(steps);
+    const id = newId();
     push({ op: 'add', id, shape: n.shape, label: n.label, x: n.x, y: n.y, size: n.size });
     return id;
   });
   const lines = plan.edges.map((e) => {
-    const id = nextStepId(steps);
+    const id = newId();
     push({ op: 'connect', id, a: ids[e.a], b: ids[e.b], directed: e.directed });
     return id;
   });

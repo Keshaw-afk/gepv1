@@ -276,10 +276,18 @@ function merge(old, c) {
  * Records changes at `point`. join = add them to the keyframe that ends there (if there is one, and it
  * isn't a pause); otherwise they begin a new keyframe. Changes in one call always share a keyframe;
  * a change to something that keyframe already changes updates that step instead (see merge).
+ * appearAtEnd: things that only appear (add, connect, an instant colour) don't join a keyframe in which
+ * something takes time: there they would pop up at its start, before the moment the editor shows (its
+ * end). They become a keyframe of their own at `point` instead (the GUI passes this; the AI's
+ * "together" really means "at the start").
  * Returns { steps, point, added } (point = after the recorded steps).
  */
-export function recordSteps(steps, point, changes, { join = true, dur = 500 } = {}) {
+export function recordSteps(steps, point, changes, { join = true, dur = 500, appearAtEnd = false } = {}) {
   steps = steps.slice();
+  if (join && appearAtEnd && point > 0 && changes.every((c) => INSTANT.has(c.op) || c.dur === 0)) {
+    const f = keyframes(steps).find((k) => k.end === point);
+    if (f && steps.slice(f.start, f.end).some((s) => !INSTANT.has(s.op) && s.dur !== 0)) join = false;
+  }
   let start = join && point > 0 && !RUNS_TIME.has(steps[point - 1].op)
     ? keyframes(steps).find((f) => f.end === point)?.start ?? null : null;
   if (start !== null) { // joining: new changes take the keyframe's duration

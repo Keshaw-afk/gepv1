@@ -42,3 +42,16 @@ test('a pause is a keyframe of its own; points snap to keyframe ends; removing a
   assert.deepEqual(ops(left), ['move:2', 'wait:', 'color:1']);
   assert.deepEqual(keyframes(left).length, 3);
 });
+
+test('appearAtEnd: a shape added while a keyframe moves things appears at its end, not its start', async () => {
+  const { recordSteps, keyframes } = await import('../core/steps.js');
+  let steps = recordSteps([], 0, [{ op: 'move', target: 1, x: 300, y: 100 }], { dur: 2000 }).steps;
+  const gui = recordSteps(steps, 1, [{ op: 'add', id: 's1', shape: 'circle', label: 'B', x: 1, y: 1 }], { appearAtEnd: true });
+  assert.deepEqual(keyframes(gui.steps), [{ start: 0, end: 1 }, { start: 1, end: 2 }], 'its own keyframe, after the move');
+  const ai = recordSteps(steps, 1, [{ op: 'add', id: 's1', shape: 'circle', label: 'B', x: 1, y: 1 }]);
+  assert.equal(keyframes(ai.steps).length, 1, 'without it (the AI\'s "together"), it joins the move');
+  // a keyframe of only appearances still collects more of them
+  steps = gui.steps;
+  const more = recordSteps(steps, 2, [{ op: 'add', id: 's2', shape: 'circle', label: 'C', x: 1, y: 1 }], { appearAtEnd: true });
+  assert.equal(keyframes(more.steps).length, 2);
+});

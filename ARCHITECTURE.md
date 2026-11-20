@@ -286,11 +286,15 @@ editor is in `'stage'` mode and edits `core/Scene`. Otherwise it is in `'behavio
 picture after `steps.slice(0, k)` (built and run like any program); Record splices new steps in at k,
 Arrange adjusts instead of recording: `sourceOf(steps, k, id, prop)` (core/steps.js) finds the step that
 decides pos/size/colour there (or -1 = the stage) and that step or the stage changes (`reshapePath` bends a
-curved move to a new end; an object a step added gets an instant colour step right after it).
+curved move to a new end; an object a step added gets an instant colour step right after it). A new
+object, line or paste in Arrange after the start is recorded anyway, as an appearance at k: anything
+else would make it exist from 0 s, before the moment shown.
 **Keyframes:** steps whose `together` flag is set play with the one before; a run of them is a keyframe
 (`keyframes()` in core/steps.js, a pause is one on its own). The point always sits at a keyframe's end
-(`keyframeEndAt`). Record goes through `recordSteps(steps, point, changes, {join})`: changes join the
-keyframe ending at the point (taking its duration) unless "Next keyframe" asked for a new one; a second
+(`keyframeEndAt`). Record goes through `recordSteps(steps, point, changes, {join, appearAtEnd})`: changes join the
+keyframe ending at the point (taking its duration) unless "Next keyframe" asked for a new one; with
+`appearAtEnd` (the GUI) something that only appears does not join a keyframe where things take time
+(it would pop up at its start, before the picture shown) but gets its own keyframe at the point; a second
 change to the same object's position merges into one `path` step, a colour or size replaces. Removing or
 pruning steps keeps every other step in its keyframe (`keepKeyframes`, `removeStep`).
 **Curved moves:** in Record a drag that strays 8 px or more from a straight line keeps its shape
